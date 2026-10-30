@@ -208,7 +208,8 @@ fun HomeScreen(
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            "Accessibility বন্ধ — ট্যাপ/স্ক্রল কাজ করবে না",
+                            if (state.phase == Phase.IDLE) "Accessibility বন্ধ — ট্যাপ/স্ক্রল কাজ করবে না"
+                            else "Accessibility বন্ধ — কাজ আটকে যেতে পারে",
                             color = Color(0xFFFFC078),
                             fontSize = 9.5.sp
                         )

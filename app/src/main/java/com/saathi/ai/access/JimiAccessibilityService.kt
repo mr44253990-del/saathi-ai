@@ -33,12 +33,25 @@ import java.util.concurrent.atomic.AtomicBoolean
 class JimiAccessibilityService : AccessibilityService() {
 
     private val startedAt = System.currentTimeMillis()
+    private var connectedAt = System.currentTimeMillis()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
         connected.value = true
+        connectedAt = System.currentTimeMillis()
         Log.i(TAG, "connected")
+        // Re-apply the flags at runtime as well as in XML: some OEM ROMs (MIUI,
+        // HyperOS, ColorOS) reset the XML config after the first enable and then
+        // flag the service as malfunctioning because it advertises capabilities
+        // it no longer honours.
+        runCatching {
+            val info = serviceInfo ?: return@runCatching
+            info.flags = info.flags or
+                android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+            info.notificationTimeout = 220
+            serviceInfo = info
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -429,6 +442,27 @@ class JimiAccessibilityService : AccessibilityService() {
         val currentApp: StateFlow<String> get() = _currentApp
 
         fun isEnabled(): Boolean = instance != null
+
+        /** Milliseconds since the service connected, or -1 when it is off. */
+        fun uptimeMs(): Long = instance?.let { System.currentTimeMillis() - it.connectedAt } ?: -1L
+
+        /**
+         * Whether Android still considers Jimi's accessibility service enabled.
+         * Reading the secure setting is the only reliable check across OEMs: if the
+         * user (or the system watchdog) turned it off, [instance] is also null, but
+         * this distinguishes "never enabled" from "killed by the system".
+         */
+        fun isFlaggedEnabled(context: android.content.Context): Boolean {
+            return try {
+                val enabled = android.provider.Settings.Secure.getString(
+                    context.contentResolver,
+                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                ) ?: ""
+                enabled.contains(context.packageName, ignoreCase = true)
+            } catch (t: Throwable) {
+                false
+            }
+        }
 
         /** Runs a multi-step goal without the model in the loop. */
         fun autopilot(goal: String, onStep: (String) -> Unit = {}): String {

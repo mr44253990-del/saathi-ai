@@ -167,16 +167,25 @@ fun PermissionsScreen(onDone: () -> Unit) {
 
             val accAppear by animateFloatAsState(if (revealAll) 1f else 0f, tween(420), label = "acc")
             Box(Modifier.scale(0.96f + 0.04f * accAppear)) {
+                val a11yHealth = remember { com.saathi.ai.access.AccessHealth.status(context) }
                 SpecialRow(
                     title = "Accessibility — Jimi-র হাত",
-                    desc = "স্ক্রিন পড়া, ট্যাপ করা, স্ক্রল, টাইপ, YouTube-এ গান চালানো — সব এর উপর নির্ভর করে",
-                    enabled = accessibilityOn,
-                    accent = Aqua,
+                    desc = when {
+                        a11yHealth.connected -> "চালু আছে (${a11yHealth.uptimeMs / 60000} মিনিট)"
+                        a11yHealth.enabledInSettings ->
+                            "সেটিংসে চালু কিন্তু সার্ভিস থেমে গেছে — বন্ধ করে আবার চালু করো"
+                        else -> "স্ক্রিন পড়া, ট্যাপ, স্ক্রল, টাইপ, ড্র্যাগ — সব এর উপর নির্ভর করে"
+                    },
+                    enabled = a11yHealth.connected,
+                    accent = com.saathi.ai.ui.theme.jimi.secondary,
                     onClick = {
-                        context.startActivity(
-                            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
+                        com.saathi.ai.access.AccessHealth.tryRepair(context)
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
                     }
                 )
             }
