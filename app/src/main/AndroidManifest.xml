@@ -21,6 +21,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission
+        android:name="android.permission.BIND_VOICE_INTERACTION"
+        tools:ignore="ProtectedPermissions" />
 
     <!-- Phone control. Deliberately minimal: no RECEIVE_SMS, no READ_PHONE_STATE —
          the app never silently intercepts messages or reads SIM data. -->
@@ -138,6 +142,24 @@
             android:name=".hotword.HotwordService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- Digital assistant (Settings → Default apps → Digital assistant app) -->
+        <service
+            android:name=".assist.JimiVoiceInteractionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/voice_interaction_service" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".assist.JimiVoiceInteractionSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
 
         <!-- Quick Settings tile: reliable one-tap wake on Android 12+ -->
         <service

@@ -100,6 +100,9 @@ jobs:
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
       # ─────────────────────────────────────────────── 5. build
+      - name: 🧹 Clean (never trust the Gradle cache)
+        run: ./gradlew clean --no-daemon
+
       - name: 🛠️ Build debug APK
         run: |
           ./gradlew :app:assembleDebug \
@@ -121,14 +124,26 @@ jobs:
           mkdir -p out
           VN="${{ steps.ver.outputs.version_name }}"
           VC="${{ steps.ver.outputs.version_code }}"
-          cp app/build/outputs/apk/debug/app-debug.apk "out/jimi-v${VN}-b${VC}-debug.apk"
-
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then
             cp app/build/outputs/apk/release/app-release.apk "out/jimi-v${VN}-b${VC}-release.apk"
+          else
+            cp app/build/outputs/apk/debug/app-debug.apk "out/jimi-v${VN}-b${VC}-debug.apk"
           fi
 
           echo "### 📱 Built APKS" >> "$GITHUB_STEP_SUMMARY"
           ls -lh out | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # Stale-build detector: the APK must contain the newest classes.
+          python3 - <<'EOF'
+          import zipfile, glob, sys
+          f = glob.glob('out/*.apk')[0]
+          z = zipfile.ZipFile(f)
+          blob = b''.join(z.read(n) for n in z.namelist() if n.endswith('.dex'))
+          must = [b'JimiTileService', b'ThemePickerScreen', b'SmartTools', b'AssistantGateway']
+          missing = [m.decode() for m in must if m not in blob]
+          print('dex check ->', 'ok' if not missing else 'MISSING ' + str(missing))
+          sys.exit(1 if missing else 0)
+          EOF
 
           if [ -f "$ANDROID_HOME/build-tools/35.0.0/aapt2" ]; then
             "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging out/*.apk 2>/dev/null \

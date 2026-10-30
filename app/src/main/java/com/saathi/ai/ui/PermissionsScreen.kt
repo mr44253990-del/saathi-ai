@@ -216,6 +216,29 @@ fun PermissionsScreen(onDone: () -> Unit) {
                 }
             )
 
+            Spacer(Modifier.height(10.dp))
+            // battery optimisation is what kills the background wake word
+            val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+            val unrestricted = runCatching {
+                pm.isIgnoringBatteryOptimizations(context.packageName)
+            }.getOrDefault(false)
+            SpecialRow(
+                title = "ব্যাটারি আটকাবে না",
+                desc = "এটা না দিলে Android ব্যাকগ্রাউন্ডে \"হেই Jimi\" মেরে ফেলবে",
+                enabled = unrestricted,
+                accent = Color(0xFFFFB86B),
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(
+                                android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                Uri.parse("package:" + context.packageName)
+                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+                }
+            )
+
             Spacer(Modifier.height(22.dp))
 
             // ---------- runtime permissions
