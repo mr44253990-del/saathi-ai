@@ -6,8 +6,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -28,9 +30,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import com.saathi.ai.access.JimiAccessibilityService
+import com.saathi.ai.bubble.BubbleService
 import com.saathi.ai.capture.CameraController
 import com.saathi.ai.capture.LiveSessionService
 import com.saathi.ai.data.SecurePrefs
+import com.saathi.ai.hotword.HotwordService
 import com.saathi.ai.live.Phase
 import com.saathi.ai.live.SessionHub
 import com.saathi.ai.ui.HomeScreen
@@ -45,6 +50,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var prefs: SecurePrefs
     private var cameraController: CameraController? = null
     private var previewView: PreviewView? = null
+
+    private var accessibilityOn = false
+    private var bubbleOn = false
+    private var hotwordOn = false
 
     private val screenCaptureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -61,11 +70,21 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         prefs = SecurePrefs(this)
+        refreshSpecial()
+
+        // "Hey Jimi" from the hotword service lands here
+        if (intent?.getBooleanExtra(HotwordService.EXTRA_WAKE, false) == true) {
+            SessionHub.update { it.copy(phase = Phase.CONNECTING) }
+            LiveSessionService.start(this)
+        }
 
         setContent {
             SaathiTheme {
                 SaathiApp(
                     prefs = prefs,
+                    accessibilityOn = accessibilityOn,
+                    bubbleOn = bubbleOn,
+                    hotwordOn = hotwordOn,
                     onStartSession = { startSession() },
                     onEndSession = {
                         stopCamera()
@@ -78,9 +97,7 @@ class MainActivity : ComponentActivity() {
                         LiveSessionService.setMic(this, enabled)
                         SessionHub.update { it.copy(micOn = enabled) }
                     },
-                    onSetCamera = { enabled ->
-                        if (enabled) startCamera() else stopCamera()
-                    },
+                    onSetCamera = { enabled -> if (enabled) startCamera() else stopCamera() },
                     onSwitchCamera = { startCamera(front = false) },
                     onSetScreen = { enabled ->
                         if (enabled) requestScreenCapture() else {
@@ -88,11 +105,41 @@ class MainActivity : ComponentActivity() {
                             SessionHub.update { it.copy(screenOn = false) }
                         }
                     },
+                    onToggleBubble = {
+                        if (Settings.canDrawOverlays(this)) {
+                            if (bubbleOn) BubbleService.hide(this) else BubbleService.show(this)
+                            bubbleOn = !bubbleOn
+                        } else {
+                            openOverlaySettings()
+                        }
+                    },
+                    onToggleHotword = {
+                        if (hotwordOn) HotwordService.stop(this) else HotwordService.start(this)
+                        hotwordOn = !hotwordOn
+                        prefs.hotwordEnabled = hotwordOn
+                    },
+                    onMinimize = { minimizeToBubble() },
                     onSendText = { text -> LiveSessionService.sendText(this, text) },
-                    getPreview = { previewView }
+                    getPreview = { previewView },
+                    onRefreshSpecial = { refreshSpecial() }
                 )
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshSpecial()
+        if (prefs.hotwordEnabled && !hotwordOn && hasMic()) {
+            HotwordService.start(this)
+            hotwordOn = true
+        }
+    }
+
+    private fun refreshSpecial() {
+        accessibilityOn = JimiAccessibilityService.isEnabled()
+        bubbleOn = Settings.canDrawOverlays(this) && prefs.bubbleEnabled
+        hotwordOn = prefs.hotwordEnabled && hasMic()
     }
 
     // ------------------------------------------------------------------ session
@@ -109,6 +156,27 @@ class MainActivity : ComponentActivity() {
     private fun hasMic(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
+
+    /** Shrinks the app into the floating bubble and keeps the session running. */
+    private fun minimizeToBubble() {
+        if (!Settings.canDrawOverlays(this)) {
+            openOverlaySettings()
+            return
+        }
+        prefs.bubbleEnabled = true
+        BubbleService.show(this)
+        bubbleOn = true
+        moveTaskToBack(true)
+    }
+
+    private fun openOverlaySettings() {
+        startActivity(
+            Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
 
     // ------------------------------------------------------------------ camera
 
@@ -182,14 +250,21 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun SaathiApp(
     prefs: SecurePrefs,
+    accessibilityOn: Boolean,
+    bubbleOn: Boolean,
+    hotwordOn: Boolean,
     onStartSession: () -> Unit,
     onEndSession: () -> Unit,
     onSetMic: (Boolean) -> Unit,
     onSetCamera: (Boolean) -> Unit,
     onSwitchCamera: () -> Unit,
     onSetScreen: (Boolean) -> Unit,
+    onToggleBubble: () -> Unit,
+    onToggleHotword: () -> Unit,
+    onMinimize: () -> Unit,
     onSendText: (String) -> Unit,
-    getPreview: () -> PreviewView?
+    getPreview: () -> PreviewView?,
+    onRefreshSpecial: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -202,7 +277,6 @@ private fun SaathiApp(
         onDispose { SessionHub.reset() }
     }
 
-    // Bring the UI back to a sane state if the app was reopened after a kill.
     LaunchedEffect(Unit) {
         delay(1200)
         if (!SessionHub.isServiceRunning) {
@@ -224,10 +298,12 @@ private fun SaathiApp(
         when (current) {
             "splash" -> SplashScreen(onFinished = {
                 screen = if (!prefs.onboardingDone) "permissions" else "home"
+                onRefreshSpecial()
             })
 
             "permissions" -> PermissionsScreen(onDone = {
                 prefs.onboardingDone = true
+                onRefreshSpecial()
                 screen = "home"
             })
 
@@ -246,6 +322,9 @@ private fun SaathiApp(
                 hasMicPermission = ContextCompat.checkSelfPermission(
                     context, Manifest.permission.RECORD_AUDIO
                 ) == PackageManager.PERMISSION_GRANTED,
+                accessibilityOn = accessibilityOn,
+                bubbleOn = bubbleOn,
+                hotwordOn = hotwordOn,
                 cameraPreviewView = getPreview(),
                 onStart = onStartSession,
                 onEnd = onEndSession,
@@ -253,8 +332,11 @@ private fun SaathiApp(
                 onToggleCamera = { onSetCamera(!state.cameraOn) },
                 onSwitchCamera = onSwitchCamera,
                 onToggleScreen = { onSetScreen(!state.screenOn) },
+                onToggleBubble = onToggleBubble,
+                onToggleHotword = onToggleHotword,
                 onSendText = onSendText,
-                onOpenSettings = { screen = "settings" }
+                onOpenSettings = { screen = "settings" },
+                onMinimize = onMinimize
             )
         }
     }

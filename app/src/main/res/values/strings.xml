@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">সাথী</string>
+    <string name="app_name">Jimi</string>
     <string name="app_tagline">তোমার সবসময়ের AI সঙ্গী</string>
 
     <string name="status_connecting">সংযোগ হচ্ছে…</string>
@@ -14,4 +14,6 @@
     <string name="notif_title">সাথী সক্রিয় আছে</string>
     <string name="notif_text">কথা বলতে ট্যাপ করো</string>
     <string name="notif_stop">বন্ধ করো</string>
+    <string name="accessibility_description">Jimi এই সার্ভিস দিয়ে স্ক্রিনের লেখা পড়ে, ট্যাপ করে, স্ক্রল করে এবং তোমার কথা অনুযায়ী অ্যাপ চালায়। তোমার অনুমতি ছাড়া এটি কিছু করে না।</string>
+    <string name="bubble_service_label">Jimi floating bubble</string>
 </resources>

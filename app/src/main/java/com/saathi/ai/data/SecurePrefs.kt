@@ -64,6 +64,30 @@ class SecurePrefs(context: Context) {
 
     val isConfigured: Boolean get() = apiKey.isNotBlank()
 
+    var bubbleEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BUBBLE, false)
+        set(value) = prefs.edit().putBoolean(KEY_BUBBLE, value).apply()
+
+    var hotwordEnabled: Boolean
+        get() = prefs.getBoolean(KEY_HOTWORD, false)
+        set(value) = prefs.edit().putBoolean(KEY_HOTWORD, value).apply()
+
+    // ---------------------------------------------------------------- long-term memory
+
+    /** Jimi's memory: "key -> fact" pairs the model asked us to remember. */
+    fun remember(key: String, value: String) {
+        val existing = prefs.getString(KEY_MEMORY, "") ?: ""
+        val lines = existing.lines().filter { it.isNotBlank() && !it.startsWith("$key:") }
+        val updated = (lines + "$key: $value").joinToString("\n")
+        prefs.edit().putString(KEY_MEMORY, updated).apply()
+    }
+
+    fun recall(): String = prefs.getString(KEY_MEMORY, "") ?: ""
+
+    fun forgetAll() {
+        prefs.edit().remove(KEY_MEMORY).apply()
+    }
+
     /** The full system instruction handed to Gemini Live at session start. */
     fun buildSystemPrompt(): String {
         val base = persona.ifBlank { DEFAULT_PERSONA }
@@ -72,7 +96,10 @@ class SecurePrefs(context: Context) {
             "en" -> "\n\nAlways reply in English unless the user clearly asks for another language."
             else -> "\n\nReply in whatever language the user is speaking."
         }
-        return base + langRule
+        val memory = recall()
+        val memoryRule = if (memory.isBlank()) "" else
+            "\n\nব্যবহারকারীর সম্পর্কে যা তুমি আগে মনে রেখেছ:\n$memory"
+        return base + langRule + memoryRule
     }
 
     companion object {
@@ -85,6 +112,9 @@ class SecurePrefs(context: Context) {
         private const val KEY_TRANSCRIPT = "show_transcript"
         private const val KEY_SEARCH = "search_grounding"
         private const val KEY_ONBOARDING = "onboarding_done"
+        private const val KEY_MEMORY = "memory"
+        private const val KEY_BUBBLE = "bubble_enabled"
+        private const val KEY_HOTWORD = "hotword_enabled"
 
         const val DEFAULT_MODEL = "gemini-3.8-live"
         const val DEFAULT_VOICE = "Aoede"

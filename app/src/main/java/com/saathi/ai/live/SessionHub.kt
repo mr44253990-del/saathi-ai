@@ -13,7 +13,9 @@ data class SessionState(
     val userText: String = "",
     val modelText: String = "",
     val error: String? = null,
-    val model: String = ""
+    val model: String = "",
+    val lastTool: String = "",
+    val bubbleMsg: String = ""
 )
 
 /**

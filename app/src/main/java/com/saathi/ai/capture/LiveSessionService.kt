@@ -22,6 +22,9 @@ import com.saathi.ai.data.SecurePrefs
 import com.saathi.ai.live.LiveClient
 import com.saathi.ai.live.Phase
 import com.saathi.ai.live.SessionHub
+import com.saathi.ai.live.ToolExecutor
+import org.json.JSONObject
+import java.util.concurrent.Executors
 
 /**
  * Owns the whole realtime pipeline:
@@ -39,6 +42,9 @@ class LiveSessionService : Service(), LiveClient.Listener {
     private var player: PcmPlayer? = null
     private var screenSource: ScreenFrameSource? = null
     private var wakeLock: PowerManager.WakeLock? = null
+
+    private lateinit var toolExecutor: ToolExecutor
+    private val toolPool = Executors.newSingleThreadExecutor()
 
     private var resumeHandle: String? = null
     private var reconnectAttempts = 0
@@ -65,6 +71,8 @@ class LiveSessionService : Service(), LiveClient.Listener {
         SessionHub.isServiceRunning = true
         createNotificationChannel()
         startForegroundSafely()
+
+        toolExecutor = ToolExecutor(this)
 
         SessionHub.cameraFrameSink = { jpeg ->
             ensureCameraType()
@@ -103,7 +111,8 @@ class LiveSessionService : Service(), LiveClient.Listener {
             voice = prefs.voice,
             systemPrompt = prefs.buildSystemPrompt(),
             resumeHandle = resumeHandle,
-            searchGrounding = prefs.searchGrounding
+            searchGrounding = prefs.searchGrounding,
+            enableTools = true
         )
 
         client?.close()
@@ -161,6 +170,16 @@ class LiveSessionService : Service(), LiveClient.Listener {
     override fun onInterrupted() {
         player?.flush()
         SessionHub.update { it.copy(phase = Phase.LISTENING) }
+    }
+
+    override fun onToolCall(id: String, name: String, args: JSONObject) {
+        // Tools can block (sleep while a screen renders), so never run them on
+        // the WebSocket reader thread.
+        SessionHub.update { it.copy(lastTool = name) }
+        toolPool.execute {
+            val result = toolExecutor.execute(name, args)
+            client?.sendToolResponse(id, name, result)
+        }
     }
 
     override fun onResumptionToken(token: String) {
@@ -277,6 +296,7 @@ class LiveSessionService : Service(), LiveClient.Listener {
         screenSource = null
         client?.close()
         client = null
+        runCatching { toolPool.shutdownNow() }
         SessionHub.cameraFrameSink = null
         SessionHub.isServiceRunning = false
         runCatching { wakeLock?.release() }

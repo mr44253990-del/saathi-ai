@@ -33,6 +33,8 @@ class LiveClient(private val listener: Listener) {
         fun onOutputTranscript(text: String)
         fun onTurnComplete()
         fun onInterrupted()
+        /** The model wants to run tools. Return true if handled. */
+        fun onToolCall(id: String, name: String, args: JSONObject)
         fun onResumptionToken(token: String)
         fun onGoAway()
         fun onError(message: String)
@@ -45,7 +47,8 @@ class LiveClient(private val listener: Listener) {
         val voice: String,
         val systemPrompt: String,
         val resumeHandle: String? = null,
-        val searchGrounding: Boolean = true
+        val searchGrounding: Boolean = true,
+        val enableTools: Boolean = true
     )
 
     private val http = OkHttpClient.Builder()
@@ -139,6 +142,20 @@ class LiveClient(private val listener: Listener) {
         send(JSONObject().put("clientContent", JSONObject().put("turns", turns).put("turnComplete", true)))
     }
 
+    /** Sends the result of a function call back to the model. */
+    fun sendToolResponse(id: String, name: String, resultJson: String) {
+        if (!ready) return
+        val response = JSONObject()
+            .put("id", id)
+            .put("name", name)
+            .put("response", JSONObject().put("result", resultJson))
+        val body = JSONObject().put(
+            "toolResponse",
+            JSONObject().put("functionResponses", JSONArray().put(response))
+        )
+        send(body)
+    }
+
     /** Tells the model that the mic stream paused so buffered audio is flushed. */
     fun sendAudioStreamEnd() {
         if (!ready) return
@@ -182,6 +199,21 @@ class LiveClient(private val listener: Listener) {
                 if (upd.optBoolean("resumable", false)) {
                     val handle = upd.optString("newHandle", "")
                     if (handle.isNotBlank()) listener.onResumptionToken(handle)
+                }
+                return
+            }
+
+            if (msg.has("toolCall")) {
+                val calls = msg.getJSONObject("toolCall").optJSONArray("functionCalls")
+                if (calls != null) {
+                    for (i in 0 until calls.length()) {
+                        val call = calls.optJSONObject(i) ?: continue
+                        val id = call.optString("id", "call_$i")
+                        val name = call.optString("name", "")
+                        if (name.isBlank()) continue
+                        val args = call.optJSONObject("args") ?: JSONObject()
+                        listener.onToolCall(id, name, args)
+                    }
                 }
                 return
             }
@@ -259,9 +291,16 @@ class LiveClient(private val listener: Listener) {
                 }
             )
 
+        val toolList = JSONArray()
         if (cfg.searchGrounding) {
-            setup.put("tools", JSONArray().put(JSONObject().put("googleSearch", JSONObject())))
+            toolList.put(JSONObject().put("googleSearch", JSONObject()))
         }
+        if (cfg.enableTools) {
+            toolList.put(
+                JSONObject().put("functionDeclarations", ToolRegistry.declarations())
+            )
+        }
+        if (toolList.length() > 0) setup.put("tools", toolList)
 
         return JSONObject().put("setup", setup).toString()
     }

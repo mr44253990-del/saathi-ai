@@ -2,6 +2,7 @@ package com.saathi.ai.ui
 
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -14,6 +15,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -62,6 +65,9 @@ fun HomeScreen(
     state: SessionState,
     configured: Boolean,
     hasMicPermission: Boolean,
+    accessibilityOn: Boolean,
+    bubbleOn: Boolean,
+    hotwordOn: Boolean,
     cameraPreviewView: PreviewView?,
     onStart: () -> Unit,
     onEnd: () -> Unit,
@@ -69,8 +75,11 @@ fun HomeScreen(
     onToggleCamera: () -> Unit,
     onSwitchCamera: () -> Unit,
     onToggleScreen: () -> Unit,
+    onToggleBubble: () -> Unit,
+    onToggleHotword: () -> Unit,
     onSendText: (String) -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onMinimize: () -> Unit
 ) {
     var showText by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
@@ -96,21 +105,55 @@ fun HomeScreen(
                     .padding(top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // JIMI wordmark with animated gradient dot
                 Column(Modifier.weight(1f)) {
-                    Text("সাথী", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "JIMI",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 3.sp,
+                            color = TextPrimary
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        val t = rememberInfiniteTransition(label = "dot")
+                        val a by t.animateFloat(
+                            0.35f, 1f,
+                            infiniteRepeatable(tween(900), RepeatMode.Reverse),
+                            label = "a"
+                        )
+                        Box(
+                            Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(Aqua.copy(alpha = a))
+                        )
+                    }
                     Text(
                         text = if (state.model.isBlank()) "Gemini Live" else state.model,
-                        fontSize = 10.5.sp,
-                        color = TextMuted
+                        fontSize = 10.sp,
+                        color = TextMuted,
+                        letterSpacing = 0.4.sp
                     )
                 }
 
-                StatusChip(
-                    text = phaseLabel(state.phase),
-                    dotColor = phaseColor(state.phase)
-                )
+                StatusChip(text = phaseLabel(state.phase), dotColor = phaseColor(state.phase))
 
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(8.dp))
+
+                // minimise into the floating bubble
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.08f))
+                        .clickable { onMinimize() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(SaathiIcons.Minimize, "ছোট করো", tint = Aqua, modifier = Modifier.size(18.dp))
+                }
+
+                Spacer(Modifier.width(8.dp))
 
                 Box(
                     modifier = Modifier
@@ -136,10 +179,10 @@ fun HomeScreen(
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                SaathiOrb(
+                JimiOrb(
                     phase = state.phase,
                     level = state.level,
-                    modifier = Modifier.size(310.dp)
+                    modifier = Modifier.size(320.dp)
                 )
 
                 if (state.cameraOn && cameraPreviewView != null) {
@@ -179,13 +222,25 @@ fun HomeScreen(
                         Text("স্ক্রিন শেয়ারিং", color = TextPrimary.copy(alpha = 0.9f), fontSize = 10.sp)
                     }
                 }
+
+                if (!accessibilityOn) {
+                    Text(
+                        text = "Accessibility বন্ধ — Jimi টাচ/স্ক্রিন দেখতে পারবে না",
+                        color = Color(0xFFFFB86B),
+                        fontSize = 10.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 6.dp)
+                    )
+                }
             }
 
             // ------------------------------ transcript / hint
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(112.dp),
+                    .height(104.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -230,13 +285,24 @@ fun HomeScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 26.dp),
+                        .padding(bottom = 14.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     StartPill(
-                        label = if (configured) "সাথে কথা বলো" else "আগে API Key সেট করো",
+                        label = if (configured) "Jimi-র সাথে কথা বলো" else "আগে API Key সেট করো",
                         onClick = if (configured && hasMicPermission) onStart else onOpenSettings
                     )
+                }
+                // quick toggles row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 22.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    ToggleChip("Floating bubble", bubbleOn, onToggleBubble)
+                    Spacer(Modifier.width(8.dp))
+                    ToggleChip("\"হেই Jimi\"", hotwordOn, onToggleHotword)
                 }
             } else {
                 Row(
@@ -269,6 +335,12 @@ fun HomeScreen(
                         label = "লিখো",
                         active = showText,
                         onClick = { showText = !showText }
+                    )
+                    RoundAction(
+                        icon = SaathiIcons.Bubble,
+                        label = "ছোট করো",
+                        active = bubbleOn,
+                        onClick = onMinimize
                     )
                     RoundAction(
                         icon = SaathiIcons.StopCircle,
@@ -364,12 +436,34 @@ fun HomeScreen(
 }
 
 @Composable
+private fun ToggleChip(label: String, on: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (on) Aqua.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.06f))
+            .border(1.dp, if (on) Aqua.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.1f), RoundedCornerShape(50))
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(if (on) Aqua else TextMuted)
+        )
+        Spacer(Modifier.width(7.dp))
+        Text(label, color = if (on) Aqua else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
 private fun StartPill(label: String, onClick: () -> Unit) {
     val transition = rememberInfiniteTransition(label = "pill")
     val glow by transition.animateFloat(
         initialValue = 0.6f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1500), repeatMode = RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing), RepeatMode.Reverse),
         label = "glow"
     )
     Box(
@@ -384,7 +478,7 @@ private fun StartPill(label: String, onClick: () -> Unit) {
                 )
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 34.dp, vertical = 17.dp),
+            .padding(horizontal = 32.dp, vertical = 17.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -419,10 +513,10 @@ fun phaseColor(phase: Phase): Color = when (phase) {
 private fun hintFor(phase: Phase, configured: Boolean, mic: Boolean): String = when {
     !configured -> "শুরু করতে সেটিংসে তোমার Gemini API Key দাও।"
     !mic -> "কথা বলার জন্য মাইক্রোফোনের অনুমতি দরকার।"
-    phase == Phase.IDLE -> "নিচের বোতামে চাপ দিয়ে কথা শুরু করো।"
-    phase == Phase.LISTENING -> "স্বাভাবিকভাবে কথা বলো, আমি শুনছি…"
+    phase == Phase.IDLE -> "\"হেই Jimi\" বলো, বা নিচের বোতামে চাপ দাও।"
+    phase == Phase.LISTENING -> "বলো — ইউটিউব খুলো, গান চালাও, ফোন দাও…"
     phase == Phase.SPEAKING -> "তুমি চাইলে মাঝপথে থামিয়ে দিতে পারো।"
-    phase == Phase.THINKING -> "একটু ভাবছি…"
+    phase == Phase.THINKING -> "কাজ করছি…"
     phase == Phase.RECONNECTING -> "সংযোগ আবার জোড়া লাগাচ্ছি…"
     else -> ""
 }
