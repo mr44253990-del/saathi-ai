@@ -455,6 +455,9 @@ class LiveSessionService : Service(), LiveClient.Listener {
                 startScreenShare(code, data)
             }
             ACTION_TEXT -> sendText(intent.getStringExtra(EXTRA_TEXT).orEmpty())
+            // A bare start — digital assistant long-press, hotword, bubble tap,
+            // Quick Settings tile — carries no action, and it MUST connect by itself.
+            null -> if (client == null) connect()
         }
         return START_STICKY
     }

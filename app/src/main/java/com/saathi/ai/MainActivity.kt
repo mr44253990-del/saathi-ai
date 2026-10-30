@@ -48,6 +48,7 @@ import com.saathi.ai.ui.SplashScreen
 import com.saathi.ai.ui.ThemePickerScreen
 import com.saathi.ai.ui.theme.JimiThemes
 import com.saathi.ai.ui.theme.SaathiTheme
+import com.saathi.ai.ui.theme.resolveTheme
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -77,19 +78,19 @@ class MainActivity : ComponentActivity() {
         prefs = SecurePrefs(this)
         refreshSpecial()
 
-        if (intent?.getBooleanExtra(HotwordService.EXTRA_WAKE, false) == true) {
+        if (shouldWake(intent)) {
             wakeUp()
         }
 
         setContent {
-            var themeSpec by remember { mutableStateOf(JimiThemes.get(prefs.themeId)) }
+            var themeSpec by remember { mutableStateOf(resolveTheme(prefs.themeId, prefs.accentOverride)) }
             SaathiTheme(spec = themeSpec) {
                 JimiApp(
                     prefs = prefs,
                     accessibilityOn = accessibilityOn,
                     bubbleOn = bubbleOn,
                     hotwordOn = hotwordOn,
-                    onThemeChanged = { themeSpec = JimiThemes.get(it) },
+                    onThemeChanged = { themeSpec = resolveTheme(it, prefs.accentOverride) },
                     onStartSession = { startSession() },
                     onEndSession = {
                         stopCamera()
@@ -151,8 +152,30 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.getBooleanExtra(HotwordService.EXTRA_WAKE, false)) {
+        if (shouldWake(intent)) {
             wakeUp()
+        }
+    }
+
+    /**
+     * Every way the user can summon Jimi, in one place.
+     *
+     * The bug this fixes: the digital-assistant session used to send an extra named
+     * "wake" while this activity only looked for the hotword extra, so holding the
+     * home button opened Jimi *without starting it*. Now the hotword, the assistant
+     * session, the ASSIST / VOICE_COMMAND intents and the Quick Settings tile all
+     * funnel through here and auto-connect.
+     */
+    private fun shouldWake(intent: Intent?): Boolean {
+        if (intent == null) return false
+        if (intent.getBooleanExtra(HotwordService.EXTRA_WAKE, false)) return true
+        if (intent.getBooleanExtra("wake", false)) return true
+        if (intent.getBooleanExtra("forceStart", false)) return true
+        return when (intent.action) {
+            Intent.ACTION_ASSIST,
+            Intent.ACTION_VOICE_COMMAND,
+            "android.intent.action.VOICE_ASSIST" -> true
+            else -> false
         }
     }
 
@@ -293,6 +316,9 @@ private fun JimiApp(
     val context = LocalContext.current
 
     var screen by remember { mutableStateOf("splash") }
+    // secondary pages (memory/themes/files/games) remember their origin, so the
+    // back arrow always returns the user to where they actually came from
+    var returnTo by remember { mutableStateOf("home") }
     var configured by remember { mutableStateOf(prefs.isConfigured) }
     val state by SessionHub.state.collectAsState()
 
@@ -327,7 +353,7 @@ private fun JimiApp(
             })
 
             "draw" -> com.saathi.ai.create.DrawingScreen(
-                onBack = { screen = "home" },
+                onBack = { screen = returnTo },
                 onShare = { bmp ->
                     runCatching {
                         val dir = java.io.File(context.cacheDir, "art")
@@ -339,10 +365,39 @@ private fun JimiApp(
                 }
             )
 
+            "hub" -> HubScreen(
+                installedApps = runCatching {
+                    context.packageManager.getInstalledApplications(0).size
+                }.getOrDefault(0),
+                knownApps = com.saathi.ai.access.AppKnowledge(context).installedApps().size,
+                memoryCount = com.saathi.ai.data.MemoryStore(context).count(),
+                reminders = com.saathi.ai.data.MemoryStore(context).reminders().size,
+                chats = com.saathi.ai.data.ChatStore(context).chats().size,
+                accessibilityHealthy = accessibilityOn,
+                onOpenMemory = { returnTo = "hub"; screen = "memory" },
+                onOpenThemes = { returnTo = "hub"; screen = "themes" },
+                onOpenDraw = { returnTo = "hub"; screen = "draw" },
+                onOpenFiles = { screen = "files" },
+                onOpenGames = { screen = "games" },
+                onBack = { screen = "home" }
+            )
+
+            "files" -> FilesScreen(onBack = { screen = "hub" })
+
+            "games" -> GamesScreen(
+                onBack = { screen = "hub" },
+                onPlayCarrom = {
+                    screen = "home"
+                    onSendText("ক্যারম খেলব — আসল বোর্ড খুলে নিজে স্ট্রাইক করো, " +
+                        "মুখে মুখে না। প্রথমে open_carrom, তারপর বোর্ড পড়ে strike_carrom।")
+                },
+                onStartGame = { game -> screen = "home"; onSendText("$game শুরু করো") }
+            )
+
             "memory" -> MemoryScreen(
                 memory = com.saathi.ai.data.MemoryStore(context),
                 chats = com.saathi.ai.data.ChatStore(context),
-                onBack = { screen = "settings" }
+                onBack = { screen = returnTo }
             )
 
             "themes" -> ThemePickerScreen(
@@ -351,7 +406,7 @@ private fun JimiApp(
                     prefs.themeId = it
                     onThemeChanged(it)
                 },
-                onBack = { screen = "settings" }
+                onBack = { screen = returnTo }
             )
 
             "settings" -> SettingsScreen(
@@ -361,7 +416,9 @@ private fun JimiApp(
                     screen = "home"
                 },
                 onSaved = { configured = prefs.isConfigured },
-                onOpenThemes = { screen = "themes" }
+                onOpenThemes = { returnTo = "settings"; screen = "themes" },
+                onThemeChanged = { themeSpec = resolveTheme(it, prefs.accentOverride) },
+                onAccentChanged = { themeSpec = resolveTheme(prefs.themeId, it) }
             )
 
             else -> HomeScreen(
@@ -384,8 +441,9 @@ private fun JimiApp(
                 onToggleHotword = onToggleHotword,
                 onSendText = onSendText,
                 onOpenSettings = { screen = "settings" },
-                onOpenMemory = { screen = "memory" },
-                onOpenDraw = { screen = "draw" },
+                onOpenMemory = { returnTo = "home"; screen = "memory" },
+                onOpenDraw = { returnTo = "home"; screen = "draw" },
+                onOpenHub = { screen = "hub" },
                 onNewChat = {
                     com.saathi.ai.data.ChatStore(context).newChat()
                     SessionHub.update { it.copy(userText = "", modelText = "", lastTool = "", bubbleMsg = "", error = null) }

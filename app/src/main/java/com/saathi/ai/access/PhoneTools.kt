@@ -470,6 +470,89 @@ class PhoneTools(private val context: Context) {
         return "${b.centerX()}, ${b.centerY()}"
     }
 
+
+    /**
+     * Opens a real carrom board — an installed carrom game if the user has one,
+     * otherwise the Play Store page, otherwise a web board. Jimi then reads the
+     * board with the accessibility tree and strikes through [GestureEngine].
+     */
+    fun openCarromBoard(): String {
+        val known = listOf(
+            "com.miniclip.carrom",
+            "com.carrom.pool.disc.pool",
+            "com.carrom.board.game",
+            "com.eivaagames.CarromDiscPool",
+            "com.carrom.clash",
+            "com.gameon.carrom"
+        )
+        for (pkg in known) {
+            if (context.packageManager.getLaunchIntentForPackage(pkg) != null) {
+                val ok = runCatching {
+                    context.startActivity(
+                        context.packageManager.getLaunchIntentForPackage(pkg)!!
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }.isSuccess
+                if (ok) return "ক্যারম বোর্ড খুলেছি ($pkg)"
+            }
+        }
+        // nothing installed: find one
+        val store = runCatching {
+            context.startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("market://search?q=carrom%20board")
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }.isSuccess
+        return if (store) "ফোনে ক্যারম অ্যাপ নেই — Play Store-এ ক্যারম বোর্ড দেখাচ্ছি, একটা ইনস্টল করে নিও"
+        else "ক্যারম বোর্ড খোলা গেল না"
+    }
+
+    /** Plays one real strike on whatever board is on screen. */
+    fun strikeCarrom(): String {
+        val svc = JimiAccessibilityService.instance ?: return "Accessibility বন্ধ"
+        val dm = context.resources.displayMetrics
+        val g = svc.gestures
+
+        // Is there a labelled striker? Many carrom apps expose it; then aim precisely.
+        val strikerBounds = svc.boundsOf("striker") ?: svc.boundsOf("স্ট্রাইকার")
+        val plan = if (strikerBounds != null) {
+            com.saathi.ai.create.GameEngine.planCarromFromGrid(
+                strikerBounds.centerX().toFloat(), strikerBounds.centerY().toFloat(),
+                dm.heightPixels * 0.18f, dm.heightPixels * 0.78f,
+                dm.widthPixels * 0.10f, dm.widthPixels * 0.90f
+            )
+        } else {
+            // No labels: use the standard carrom layout — striker on the bottom
+            // baseline, coins around the centre.
+            com.saathi.ai.create.GameEngine.planCarromFromGrid(
+                dm.widthPixels * 0.5f, dm.heightPixels * 0.80f,
+                dm.heightPixels * 0.20f, dm.heightPixels * 0.75f,
+                dm.widthPixels * 0.08f, dm.widthPixels * 0.92f
+            )
+        }
+
+        val struck = g.carromStrike(plan.strikerX, plan.strikerY, plan.aimDegrees, plan.power)
+        if (!struck) return "স্ট্রাইক করা গেল না"
+
+        // watch the board for a moment so we can report what actually moved
+        var ticks = 0
+        g.watchMotion(1200) { ticks++ }
+        return "স্ট্রাইক করেছি — লক্ষ্য ${plan.reason}, কোণ ${plan.aimDegrees.toInt()}°, শক্তি " +
+            "${(plan.power * 100).toInt()}%। বোর্ডে গতি দেখা গেছে ($ticks ধাপ)।"
+    }
+
+    /** Verifies whether the last action really finished the job on screen. */
+    fun verifyTaskDone(keywords: List<String>): String {
+        val svc = JimiAccessibilityService.instance ?: return "Accessibility বন্ধ"
+        val screen = svc.dumpScreen()
+        val lower = screen.lowercase()
+        val hit = keywords.firstOrNull { lower.contains(it.lowercase()) }
+        return if (hit != null) "সম্পন্ন বলে মনে হচ্ছে — স্ক্রিনে «$hit» দেখা যাচ্ছে"
+        else "নিশ্চিত নই — স্ক্রিনে প্রত্যাশিত ফল পাওয়া যায়নি, আরেক ধাপ দরকার"
+    }
+
     fun readScreen(): String {
         val service = JimiAccessibilityService.instance
             ?: return "Accessibility is off — please enable Jimi in Settings → Accessibility"

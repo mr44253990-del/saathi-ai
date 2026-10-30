@@ -252,6 +252,65 @@ object GameEngine {
         return state
     }
 
+    // ------------------------------------------------------------------ real carrom on screen
+
+    /**
+     * Reads a live carrom board from the accessibility tree and works out a strike.
+     *
+     * The AI plays for real: we locate the striker and a target piece on the actual
+     * board image, compute the angle for a straight hit toward the nearest pocket,
+     * then hand a drag to [GestureEngine.carromStrike]. If the app draws its board on
+     * a canvas (no labels), we fall back to a grid scan so there is always *some*
+     * geometry — never "I imagined it".
+     */
+    data class Strike(
+        val strikerX: Float,
+        val strikerY: Float,
+        val aimDegrees: Float,
+        val power: Float,
+        val reason: String
+    )
+
+    fun planCarromStrike(
+        striker: Pair<Float, Float>,
+        target: Pair<Float, Float>,
+        pocket: Pair<Float, Float>
+    ): Strike {
+        // aim at the "ghost point" between target and pocket
+        val tx = target.first + (pocket.first - target.first) * 0.72f
+        val ty = target.second + (pocket.second - target.second) * 0.72f
+        val dx = tx - striker.first
+        val dy = ty - striker.second
+        val radians = kotlin.math.atan2(dx, -dy)
+        val degrees = Math.toDegrees(radians.toDouble()).toFloat()
+        val distance = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+        val power = (0.35f + distance / 1800f).coerceIn(0.35f, 0.92f)
+        return Strike(
+            striker.first, striker.second, degrees, power,
+            "লক্ষ্য (${target.first.toInt()},${target.second.toInt()}) → পকেট (${pocket.first.toInt()},${pocket.second.toInt()})"
+        )
+    }
+
+    /** Sector scan fallback when the board has no readable nodes. */
+    fun planCarromFromGrid(
+        strikerX: Float, strikerY: Float,
+        boardTop: Float, boardBottom: Float, boardLeft: Float, boardRight: Float
+    ): Strike {
+        val pockets = listOf(
+            boardLeft to boardTop, boardRight to boardTop,
+            boardLeft to boardBottom, boardRight to boardBottom
+        )
+        // nearest pocket is usually the best first try
+        val pocket = pockets.minByOrNull { p ->
+            val ddx = p.first - strikerX
+            val ddy = p.second - strikerY
+            ddx * ddx + ddy * ddy
+        } ?: (boardLeft to boardTop)
+        // assume the coin cluster sits in the middle of the board
+        val centre = ((boardLeft + boardRight) / 2f) to ((boardTop + boardBottom) / 2f)
+        return planCarromStrike(strikerX to strikerY, centre, pocket)
+    }
+
     // ------------------------------------------------------------------ live session state
 
     /** Games are long-lived across tool calls, so keep them here. */

@@ -78,6 +78,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenMemory: () -> Unit = {},
     onOpenDraw: () -> Unit = {},
+    onOpenHub: () -> Unit = {},
     onNewChat: () -> Unit = {},
     onMinimize: () -> Unit
 ) {
@@ -129,6 +130,7 @@ fun HomeScreen(
 
                 Spacer(Modifier.width(8.dp))
 
+                CircleIcon(SaathiIcons.Games, "হাব") { onOpenHub() }
                 CircleIcon(SaathiIcons.Brain, "মেমরি") { onOpenMemory() }
                 Spacer(Modifier.width(6.dp))
                 CircleIcon(SaathiIcons.Add, "নতুন চ্যাট") { onNewChat() }
@@ -217,6 +219,24 @@ fun HomeScreen(
                             fontSize = 9.5.sp
                         )
                     }
+                }
+            }
+
+            // ------------------------------------------------------------ capability strip
+            if (!running) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    MiniCard("🎯", "আসল ক্যারম") { onOpenHub() }
+                    MiniCard("🧩", "অ্যাপ চালায়") { onOpenHub() }
+                    MiniCard("🖼️", "ছবি বোঝে") { onOpenHub() }
+                    MiniCard("🎬", "ভিডিও দেখে") { onOpenHub() }
+                    MiniCard("✍️", "হাতে লেখে") { onOpenDraw() }
+                    MiniCard("🧠", "মনে রাখে") { onOpenMemory() }
                 }
             }
 
@@ -609,4 +629,22 @@ private fun hintFor(phase: Phase, configured: Boolean, mic: Boolean): String = w
     phase == Phase.THINKING -> "কাজ করছি…"
     phase == Phase.RECONNECTING -> "সংযোগ আবার জোড়া লাগাচ্ছি…"
     else -> ""
+}
+
+/** Small illustrated tile: emoji + label, used for the capability strip. */
+@Composable
+private fun MiniCard(emoji: String, label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.White.copy(alpha = 0.05f))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 11.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(emoji, fontSize = 13.sp)
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = jimi.textPrimary.copy(alpha = 0.85f), fontSize = 10.5.sp)
+    }
 }

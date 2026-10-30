@@ -222,6 +222,43 @@ class FileTools(private val context: Context) {
         return "কপি মেনু খোলা গেল না"
     }
 
+    /**
+     * Writes text or code Jimi produced to a real file the user can open and share.
+     *
+     * "কোড লিখে দাও" only counts if the user actually ends up with the code, so this
+     * saves it under Downloads/Jimi (created when missing) and reports the exact path
+     * and size. If public storage is blocked it falls back to app storage and says so
+     * plainly — no pretending the file exists when it does not.
+     */
+    fun writeText(fileName: String, content: String, shareIt: Boolean = false): String {
+        val safe = fileName.trim().ifBlank { "jimi-note.txt" }
+            .replace(Regex("[^A-Za-z0-9._\\-\\u0980-\\u09FF]"), "_")
+        val name = if (safe.contains('.')) safe else "$safe.txt"
+
+        val targets = buildList {
+            resolveDir("downloads")?.let { add(File(it, "Jimi")) }
+            context.getExternalFilesDir(null)?.let { add(File(it, "notes")) }
+            add(File(context.filesDir, "notes"))
+        }
+
+        for (dir in targets) {
+            try {
+                dir.mkdirs()
+                val f = File(dir, name)
+                f.writeText(content)
+                val where = "${f.absolutePath} (${humanSize(f.length())}, ${content.length} অক্ষর)"
+                if (shareIt) {
+                    val shared = share(f.absolutePath)
+                    return "ফাইলে লিখে সেভ করেছি: $where — $shared"
+                }
+                return "ফাইলে লিখে সেভ করেছি: $where"
+            } catch (t: Throwable) {
+                // permission or path problem — try the next location
+            }
+        }
+        return "ফাইলে লেখা যায়নি — জায়গা বা অনুমতি নেই"
+    }
+
     fun humanSize(bytes: Long): String {
         if (bytes < 1024) return "$bytes B"
         val kb = bytes / 1024.0

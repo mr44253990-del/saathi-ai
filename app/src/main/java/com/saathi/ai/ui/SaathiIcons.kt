@@ -393,4 +393,20 @@ object SaathiIcons {
             lineTo(11.0f, 13.0f); lineTo(3.0f, 13.0f); lineTo(3.0f, 11.0f); lineTo(11.0f, 11.0f); close()
         }
     }
+
+    val Palette: ImageVector by lazy {
+        icon("palette") {
+            moveTo(12f, 2.6f)
+            curveTo(6.6f, 2.6f, 2.4f, 6.6f, 2.4f, 11.8f)
+            curveTo(2.4f, 16.9f, 6.6f, 21.2f, 12f, 21.2f)
+            curveTo(12.9f, 21.2f, 13.6f, 20.5f, 13.6f, 19.6f)
+            curveTo(13.6f, 19.2f, 13.4f, 18.8f, 13.2f, 18.5f)
+            curveTo(12.9f, 18.1f, 12.8f, 17.7f, 12.8f, 17.3f)
+            curveTo(12.8f, 16.5f, 13.5f, 15.8f, 14.3f, 15.8f)
+            lineTo(16.4f, 15.8f)
+            curveTo(19.2f, 15.8f, 21.6f, 13.4f, 21.6f, 10.6f)
+            curveTo(21.6f, 6.2f, 17.3f, 2.6f, 12f, 2.6f)
+            close()
+        }
+    }
 }

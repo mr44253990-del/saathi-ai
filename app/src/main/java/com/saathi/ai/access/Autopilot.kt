@@ -102,7 +102,7 @@ class Autopilot(
         }
 
         SessionHub.update { it.copy(lastTool = "") }
-        return "অটোপাইলট রিপোর্ট:\n$log"
+        return verdict(goal, keywords, log.toString())
     }
 
     // ---------------------------------------------------------------- decision
@@ -205,5 +205,47 @@ class Autopilot(
         val desc = node.contentDescription?.toString()?.trim().orEmpty()
         val out = if (text.isNotEmpty()) text else desc
         return out.ifBlank { null }?.take(120)
+    }
+
+    // ---------------------------------------------------------------- honesty
+
+    /**
+     * Builds the final report — and refuses to claim success it cannot prove.
+     *
+     * The single most damaging failure mode for an assistant is saying "হয়ে গেছে"
+     * when nothing happened. So the verdict is derived from evidence only:
+     *  • did any step actually change the screen?
+     *  • is the goal's own vocabulary now visible on screen?
+     *  • did we bail out (stuck / not found / unreadable screen)?
+     *
+     * If the evidence is missing, the report says so in plain Bangla and tells the
+     * user exactly what is left, instead of a cheerful lie.
+     */
+    private fun verdict(goal: String, keywords: List<String>, log: String): String {
+        val changed = log.contains("— হয়েছে")
+        val stuck = log.contains("আটকে গেছি") ||
+            log.contains("পাইনি") ||
+            log.contains("থামছি") ||
+            log.contains("পড়া যায়নি")
+
+        val screen = runCatching { service.dumpScreen().lowercase() }.getOrDefault("")
+        val visible = keywords.filter { it.isNotBlank() && screen.contains(it.lowercase()) }
+        val proven = changed && visible.isNotEmpty() && !stuck
+
+        val head = when {
+            proven -> "✅ কাজটা সত্যিই হয়েছে — স্ক্রিনে মিল পাওয়া গেছে: ${visible.take(4).joinToString(", ")}"
+            changed && !stuck -> "⚠️ কিছু ধাপ হয়েছে, কিন্তু শেষ ফল স্ক্রিনে নিশ্চিত করতে পারিনি। " +
+                "«শেষ» বলছি না — বাকিটা তোমাকে দেখাতে হবে বা আরেকবার চেষ্টা করতে বলো।"
+            stuck -> "❌ শেষ হয়নি — মাঝপথে আটকে গেছি। যা করেছি তার রিপোর্ট নিচে।"
+            else -> "❌ কিছুই হয়নি — কোনো ধাপে স্ক্রিন বদলায়নি। মিথ্যা বলব না।"
+        }
+
+        val next = if (!proven) {
+            val missing = keywords.filter { it.isNotBlank() && !screen.contains(it.lowercase()) }.take(5)
+            if (missing.isEmpty()) "\nআরও যাচাই দরকার।"
+            else "\nস্ক্রিনে এখনো নেই: ${missing.joinToString(", ")}"
+        } else ""
+
+        return "$head$next\n\nঅটোপাইলট রিপোর্ট:\n$log"
     }
 }

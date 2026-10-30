@@ -405,6 +405,60 @@ object ToolRegistry {
         )
 
 
+
+
+        list += fn(
+            "save_text",
+            "Write text or code Jimi produced into a real file (Downloads/Jimi) and optionally open the share sheet. Use this whenever the user asks for code, a list, a letter, or notes — do not only speak it.",
+            mapOf(
+                "fileName" to ("STRING" to "File name, e.g. game.py"),
+                "content" to ("STRING" to "Full text/code to write"),
+                "share" to ("BOOLEAN" to "true = open share sheet after saving")
+            ),
+            listOf("fileName", "content")
+        )
+
+        // ---- offline packs
+        list += fn(
+            "offline_packs",
+            "List the pre-compiled offline action packs (YouTube play, WhatsApp message, Telegram voice note, FB story, TikTok upload, gallery edit, recharge, call contact, real carrom, file copy, settings, downloads)."
+        )
+        list += fn(
+            "run_pack",
+            "Run a whole offline pack on-device in ONE call — much faster than stepping tool by tool. Use for the everyday flows. Returns an honest report with proof from the screen.",
+            mapOf(
+                "pack" to ("STRING" to "Pack id, e.g. youtube_play"),
+                "arg" to ("STRING" to "Argument; use name|text for two-part flows")
+            ),
+            listOf("pack")
+        )
+
+        // ---- media understanding
+        list += fn(
+            "describe_image",
+            "Look at an image on the phone (path or content:// URI) and describe it: size, orientation, lighting, dominant colours. The frame is also sent to the live model so it can answer questions about the content.",
+            mapOf("path" to ("STRING" to "Image path or URI")),
+            listOf("path")
+        )
+        list += fn(
+            "video_info",
+            "Read a video's duration, resolution and bitrate.",
+            mapOf("path" to ("STRING" to "Video path")),
+            listOf("path")
+        )
+        list += fn(
+            "video_frames",
+            "Extract still frames from a video and show them to the model, so Jimi can actually watch the clip.",
+            mapOf("path" to ("STRING" to "Video path"), "frames" to ("NUMBER" to "1-6")),
+            listOf("path")
+        )
+        list += fn(
+            "audio_info",
+            "Read an audio file's title, artist, length and format.",
+            mapOf("path" to ("STRING" to "Audio path")),
+            listOf("path")
+        )
+
         // ---- files
         list += fn(
             "list_files",
@@ -447,6 +501,47 @@ object ToolRegistry {
             listOf("file", "folder")
         )
 
+
+
+        // ---- human-realism + verification
+        list += fn(
+            "human_tap",
+            "Tap with human jitter and a natural press length. Use for checkboxes, 'I am not a robot' style widgets, small buttons.",
+            mapOf("x" to ("NUMBER" to "X"), "y" to ("NUMBER" to "Y")),
+            listOf("x", "y")
+        )
+        list += fn(
+            "human_scroll",
+            "Scroll like a thumb: short strokes with pauses, in bursts.",
+            mapOf("down" to ("BOOLEAN" to "true = down"), "bursts" to ("NUMBER" to "1-6 strokes"))
+        )
+        list += fn(
+            "human_slider",
+            "Move a slider/seek bar to a percentage, with human acceleration.",
+            mapOf("text" to ("STRING" to "Slider label"), "percent" to ("NUMBER" to "0-100")),
+            listOf("text", "percent")
+        )
+        list += fn(
+            "deliberate_tap",
+            "Approach the target, pause, then press — for captchas and confirmation toggles.",
+            mapOf("x" to ("NUMBER" to "X"), "y" to ("NUMBER" to "Y")),
+            listOf("x", "y")
+        )
+        list += fn("wander", "Small exploratory nudges left/right/up/down, like a person looking around.")
+        list += fn(
+            "verify_task",
+            "Check the screen for the expected result before telling the user the task is done. ALWAYS call this before saying 'শেষ'.",
+            mapOf("keywords" to ("ARRAY" to "Words that should now appear on screen")),
+            listOf("keywords")
+        )
+        list += fn(
+            "open_carrom",
+            "Open a real carrom board — an installed carrom game, Play Store, or a web board."
+        )
+        list += fn(
+            "strike_carrom",
+            "Play ONE real strike on the on-screen carrom board: Jimi reads the board, computes the angle to a pocket, and flicks the striker. Call it repeatedly to play a full game."
+        )
 
         // ---- games
         list += fn(
@@ -527,6 +622,18 @@ object ToolRegistry {
         • ফাইল নিয়ে কাজ (কপি/মুভ/খোঁজা) হলে list_files/find_file দিয়ে শুরু করো;
           অ্যান্ড্রয়েড ব্লক করলে copy_file_via_ui দিয়ে Files অ্যাপের ভেতর থেকেই করো।
         • নতুন অ্যাপ হলে launch_app দিয়ে খোলো (নাম বাংলায় বললেও চিনবে), ওটা কী কাজের সেটাও বলবে।
+        • ক্যারম **সত্যিকারের বোর্ডে** খেলবে: open_carrom → strike_carrom (বারবার),
+          প্রতিটা স্ট্রাইকের পর read_screen দিয়ে বোর্ড দেখে পরের শট ঠিক করো।
+          মনে মনে বা মুখে মুখে খেলবে না — আসল স্ট্রাইক করবে, তারপর স্কোর বলবে।
+        • কোড/লেখা/তালিকা চাইলে পুরোটা লেখো, তারপর save_text দিয়ে ফাইলে সেভ করো
+          (দরকার হলে share=true) — শুধু মুখে বললে চলবে না।
+        • দৈনন্দিন কাজ (ইউটিউব, হোয়াটসঅ্যাপ, টেলিগ্রাম ভয়েস, স্টোরি, টিকটক, ছবি এডিট,
+          রিচার্জ, কল, ক্যারম, ফাইল কপি) হলে আগে offline_packs দেখে run_pack চালাও —
+          এক কলেই পুরো কাজ, ধাপে ধাপে টুল ডাকার চেয়ে অনেক দ্রুত। ব্যর্থ হলে তবেই হাতে ধাপ চালাও।
+        • ছবি/ভিডিও/অডিও নিয়ে প্রশ্ন এলে describe_image / video_frames / audio_info ব্যবহার করো —
+          ফাইলনাম দেখে অনুমান করবে না।
+        • কাজ শেষ বলার আগে অবশ্যই verify_task দিয়ে স্ক্রিন যাচাই করো।
+          যাচাই ছাড়া "হয়ে গেছে" বলা কঠোরভাবে নিষিদ্ধ।
         • কেউ খেলতে চাইলে game_start → game_move ধারাবাহিকভাবে চালাও, প্রতিবার game_board দিয়ে
           অবস্থা দেখো। নিয়ম কখনো ভাঙবে না, এবং চাল দেওয়ার আগে ছোট করে বলো কী দিচ্ছ।
     """

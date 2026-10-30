@@ -53,6 +53,8 @@ import com.saathi.ai.bubble.BubbleService
 import com.saathi.ai.data.SecurePrefs
 import com.saathi.ai.hotword.HotwordService
 import com.saathi.ai.ui.theme.Aqua
+import com.saathi.ai.ui.theme.JimiThemes
+import com.saathi.ai.ui.theme.jimi
 import com.saathi.ai.ui.theme.TextMuted
 import com.saathi.ai.ui.theme.TextPrimary
 import com.saathi.ai.ui.theme.Violet
@@ -62,7 +64,9 @@ fun SettingsScreen(
     prefs: SecurePrefs,
     onBack: () -> Unit,
     onSaved: () -> Unit,
-    onOpenThemes: () -> Unit = {}
+    onOpenThemes: () -> Unit = {},
+    onThemeChanged: (String) -> Unit = {},
+    onAccentChanged: (Int) -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -106,6 +110,16 @@ fun SettingsScreen(
                 Spacer(Modifier.width(12.dp))
                 Text("সেটিংস", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
+
+            Spacer(Modifier.height(10.dp))
+
+            ProfileHero(
+                themeEmoji = JimiThemes.get(prefs.themeId).emoji,
+                themeName = JimiThemes.get(prefs.themeId).bangla,
+                model = model,
+                voice = voice,
+                onOpenThemes = onOpenThemes
+            )
 
             Spacer(Modifier.height(12.dp))
 
@@ -239,6 +253,21 @@ fun SettingsScreen(
             Spacer(Modifier.height(14.dp))
 
             // ---------- Toggles
+            SectionCard(title = "রঙের ছোঁয়া", icon = "🎨") {
+                Text(
+                    "যেকোনো থিমের ওপর একটা রঙ চাপিয়ে দাও — অরব, বাটন, গ্লো সব একসাথে বদলে যাবে।",
+                    color = TextMuted, fontSize = 10.5.sp, lineHeight = 15.sp
+                )
+                Spacer(Modifier.height(12.dp))
+                AccentSwatches(
+                    selected = prefs.accentOverride,
+                    onPick = {
+                        prefs.accentOverride = it
+                        onAccentChanged(it)
+                    }
+                )
+            }
+
             SectionCard(title = "চেহারা ও থিম", icon = "🎨") {
                 val theme = com.saathi.ai.ui.theme.JimiThemes.get(prefs.themeId)
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -519,3 +548,103 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     focusedContainerColor = Color.White.copy(alpha = 0.04f),
     unfocusedContainerColor = Color.White.copy(alpha = 0.03f)
 )
+
+/**
+ * The top of Settings used to be a bare title. It is now a small "identity card":
+ * the current theme, model and voice are visible at a glance, and tapping it goes
+ * straight to the theme gallery. This is the visual anchor for the redesign.
+ */
+@Composable
+private fun ProfileHero(
+    themeEmoji: String,
+    themeName: String,
+    model: String,
+    voice: String,
+    onOpenThemes: () -> Unit
+) {
+    val p = jimi
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color.White.copy(alpha = 0.055f))
+            .border(1.dp, Color.White.copy(alpha = 0.09f), RoundedCornerShape(24.dp))
+            .clickable { onOpenThemes() }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Brush.linearGradient(listOf(p.primary, p.secondary))),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(themeEmoji, fontSize = 24.sp)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Jimi · $themeName", color = p.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(3.dp))
+            Text(
+                "$model  ·  কণ্ঠ $voice",
+                color = p.textMuted, fontSize = 10.5.sp, maxLines = 1
+            )
+        }
+        Text("›", color = p.textMuted, fontSize = 22.sp)
+    }
+}
+
+/** Twelve accent dots plus a "follow theme" option. */
+@Composable
+private fun AccentSwatches(selected: Int, onPick: (Int) -> Unit) {
+    val accents = JimiThemes.accents
+    Column {
+        accents.chunked(6).forEachIndexed { rowIdx, row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                row.forEachIndexed { colIdx, color ->
+                    val index = rowIdx * 6 + colIdx
+                    val isOn = selected == index
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(color)
+                            .border(
+                                width = if (isOn) 2.5.dp else 1.dp,
+                                color = if (isOn) Color.White else Color.White.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(50)
+                            )
+                            .clickable { onPick(index) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isOn) {
+                            Text("✓", color = Color.Black.copy(alpha = 0.75f), fontSize = 14.sp)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(
+                    if (selected < 0) Brush.linearGradient(listOf(jimi.primary, jimi.secondary))
+                    else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.07f), Color.White.copy(alpha = 0.04f)))
+                )
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
+                .clickable { onPick(-1) }
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            Text(
+                if (selected < 0) "থিমের নিজের রঙ ✓" else "থিমের নিজের রঙ",
+                color = if (selected < 0) Color.White else TextMuted,
+                fontSize = 11.sp
+            )
+        }
+    }
+}

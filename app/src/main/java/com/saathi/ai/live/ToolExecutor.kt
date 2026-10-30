@@ -6,6 +6,8 @@ import com.saathi.ai.access.PhoneTools
 import com.saathi.ai.access.SmartTools
 import com.saathi.ai.access.AppKnowledge
 import com.saathi.ai.access.FileTools
+import com.saathi.ai.media.MediaUnderstanding
+import com.saathi.ai.access.OfflinePacks
 import com.saathi.ai.data.SecurePrefs
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -20,6 +22,7 @@ class ToolExecutor(private val context: Context) {
     private val smart = SmartTools(context)
     private val apps = AppKnowledge(context)
     private val files = FileTools(context)
+    private val media = MediaUnderstanding(context)
     private val prefs = SecurePrefs(context)
 
     /**
@@ -182,6 +185,41 @@ class ToolExecutor(private val context: Context) {
                     }
                 }
 
+                "save_text" -> files.writeText(
+                    a.str("fileName"),
+                    a.str("content"),
+                    a.bool("share", false)
+                )
+
+                // ---- offline packs (no model round trips)
+                "offline_packs" -> OfflinePacks.catalogue()
+                "run_pack" -> {
+                    val name = a.str("pack")
+                    val arg = a.str("arg")
+                    OfflinePacks.run(context, name, arg.ifBlank { null }) { step ->
+                        SessionHub.update { it.copy(lastTool = step) }
+                    }
+                }
+
+                // ---- media understanding
+                "describe_image" -> {
+                    val facts = media.describeImage(a.str("path"))
+                    if (facts == null) "ছবিটা পড়া গেল না"
+                    else {
+                        // push the frame into the live session so the model can see it
+                        SessionHub.sendCameraFrame(facts.jpeg)
+                        media.describe(facts)
+                    }
+                }
+                "video_info" -> media.videoInfo(a.str("path"))
+                "video_frames" -> {
+                    val frames = media.videoFrames(a.str("path"), a.int("frames", 3))
+                    frames.forEach { SessionHub.sendCameraFrame(it) }
+                    if (frames.isEmpty()) "ভিডিওর ফ্রেম বের করা গেল না"
+                    else "ভিডিওর ${frames.size}টি ফ্রেম দেখছি — এখন বলো কী দেখতে পাচ্ছি"
+                }
+                "audio_info" -> media.audioInfo(a.str("path"))
+
                 "remember_playbook" -> {
                     val steps = a.optJSONArray("steps")
                     val list = (0 until (steps?.length() ?: 0)).map { steps!!.optString(it) }
@@ -221,6 +259,22 @@ class ToolExecutor(private val context: Context) {
                 }
                 "gesture_two_finger_scroll" -> gesture { it.twoFingerScroll(a.bool("down", true)) }
                 "gesture_rotate" -> gesture { it.rotate(a.num("degrees").toFloat().takeIf { d -> d != 0f } ?: 45f) }
+                "human_tap" -> gesture { it.humanTap(a.num("x").toFloat(), a.num("y").toFloat()) }
+                "human_scroll" -> gesture { it.humanScroll(a.bool("down", true), a.int("bursts", 1)) }
+                "human_slider" -> gesture {
+                    it.humanSlider(a.str("text"), a.num("percent").toFloat() / 100f)
+                }
+                "deliberate_tap" -> gesture {
+                    it.deliberateTap(a.num("x").toFloat(), a.num("y").toFloat())
+                }
+                "wander" -> gesture { it.wander() }
+                "verify_task" -> {
+                    val arr = a.optJSONArray("keywords")
+                    val list = (0 until (arr?.length() ?: 0)).map { arr!!.optString(it) }
+                    tools.verifyTaskDone(list)
+                }
+                "open_carrom" -> tools.openCarromBoard()
+                "strike_carrom" -> tools.strikeCarrom()
                 "gesture_multi_finger" -> gesture {
                     it.multiFinger(
                         a.int("fingers", 3),

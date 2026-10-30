@@ -224,6 +224,130 @@ class GestureEngine(private val service: AccessibilityService) {
         return a11y.boundsOf(text)
     }
 
+
+    // ---------------------------------------------------------------- human realism
+
+    /** Random source for micro-jitter — real fingers never hit the exact pixel. */
+    private val rnd = java.util.Random()
+
+    private fun jitter(px: Float, amount: Float = 4f): Float = px + (rnd.nextFloat() - 0.5f) * 2f * amount
+
+    /**
+     * A tap that looks human: slight jitter, variable press length, occasional
+     * micro-move before lifting. Enough to pass "are you a robot" style checks in
+     * normal apps without pretending to defeat real security captchas.
+     */
+    fun humanTap(x: Float, y: Float): Boolean {
+        val jx = jitter(x, 3.5f)
+        val jy = jitter(y, 3.5f)
+        val press = 70L + rnd.nextInt(60)
+        return dispatch(listOf(Stroke(Vec(jx, jy), listOf(Vec(jx + rnd.nextFloat() * 2f, jy)), 0, press)))
+    }
+
+    /**
+     * Scrolling the way a thumb does it: several short strokes with pauses, not one
+     * giant fling. Stops as soon as the screen stops changing, so it never scrolls
+     * past the thing Jimi wanted.
+     */
+    fun humanScroll(down: Boolean, bursts: Int = 1): Boolean {
+        val (w, h) = screen()
+        var moved = false
+        repeat(bursts.coerceIn(1, 6)) { i ->
+            val x = jitter(w * 0.5f, 18f)
+            val startY = if (down) h * (0.70f + rnd.nextFloat() * 0.05f) else h * (0.30f - rnd.nextFloat() * 0.05f)
+            val endY = if (down) startY - h * (0.20f + rnd.nextFloat() * 0.08f) else startY + h * (0.20f + rnd.nextFloat() * 0.08f)
+            moved = dragArc(x, startY, jitter(x, 10f), endY, 210L + rnd.nextInt(90)) || moved
+            Thread.sleep(220L + rnd.nextInt(180))
+        }
+        return moved
+    }
+
+    /** Small exploratory nudges — "হালকা পরিমাণে বামে-ডানে-উপরে-নিচে" like a person. */
+    fun wander(): Boolean {
+        val (w, h) = screen()
+        val cx = jitter(w * 0.5f, 40f)
+        val cy = h * (0.45f + rnd.nextFloat() * 0.2f)
+        return when (rnd.nextInt(4)) {
+            0 -> dragArc(cx, cy, cx - w * 0.12f, cy, 180)
+            1 -> dragArc(cx, cy, cx + w * 0.12f, cy, 180)
+            2 -> dragArc(cx, cy, cx, cy - h * 0.08f, 180)
+            else -> dragArc(cx, cy, cx, cy + h * 0.08f, 180)
+        }
+    }
+
+    /**
+     * Ticking checkboxes / sliders / "I'm not a robot"-style widgets the way a person
+     * does: a deliberate move to the target, a short pause, a press, then a small
+     * settle. Never rapid-fire.
+     */
+    fun deliberateTap(x: Float, y: Float): Boolean {
+        // approach
+        dragArc(x + 120f, y + 90f, x, y, 240)
+        Thread.sleep(180)
+        val ok = humanTap(x, y)
+        Thread.sleep(150)
+        return ok
+    }
+
+    /** Drag a slider with acceleration, then a tiny correction — like a thumb. */
+    fun humanSlider(text: String, targetFraction: Float): Boolean {
+        val bounds = boundsOfText(text) ?: return false
+        val startX = bounds.left + bounds.width() * 0.5f
+        val y = bounds.centerY().toFloat()
+        val endX = bounds.left + bounds.width() * targetFraction.coerceIn(0f, 1f)
+        val ok = holdAndDrag(startX, y, endX, y + 4f, releaseMs = 300, holdMs = 140)
+        Thread.sleep(160)
+        // small settle adjustment
+        dragArc(endX, y, endX + (rnd.nextFloat() - 0.5f) * 8f, y, 120)
+        return ok
+    }
+
+    // ---------------------------------------------------------------- carrom / physics aiming
+
+    /**
+     * A real carrom strike: the striker is on the baseline, the aim decides the
+     * direction, and power decides the flick length. This is what makes the on-screen
+     * game actually respond instead of Jimi "imagining" it.
+     */
+    fun carromStrike(
+        strikerX: Float,
+        strikerY: Float,
+        aimDegrees: Float,
+        power: Float
+    ): Boolean {
+        val (_, h) = screen()
+        val rad = Math.toRadians(aimDegrees.toDouble())
+        val throwDistance = h * (0.10f + 0.22f * power.coerceIn(0.1f, 1f))
+        val endX = strikerX + (kotlin.math.sin(rad) * throwDistance).toFloat()
+        val endY = strikerY - (kotlin.math.cos(rad) * throwDistance).toFloat()
+
+        // press, pull, release — a flick
+        dragArc(strikerX + 18f, strikerY + 26f, strikerX, strikerY, 180)
+        Thread.sleep(120)
+        return dragArc(strikerX, strikerY, endX, endY, (140 + 200 * power).toLong())
+    }
+
+    /** Follows the shot: watches where the striker/pieces go by taking quick snapshots. */
+    fun watchMotion(ms: Long = 900, onTick: (Int) -> Unit): Unit {
+        val a11y = service as? JimiAccessibilityService ?: return
+        val steps = (ms / 150).toInt().coerceIn(2, 12)
+        var last = -1
+        for (i in 0 until steps) {
+            val hash = a11y.rootOrNull()?.let { r ->
+                val sb = StringBuilder()
+                runCatching {
+                    for (c in 0 until r.childCount) sb.append(c).append(r.getChild(c)?.className ?: "")
+                }
+                sb.toString().hashCode()
+            } ?: 0
+            if (hash != last) {
+                last = hash
+                onTick(i)
+            }
+            Thread.sleep(150)
+        }
+    }
+
     // ---------------------------------------------------------------- plumbing
 
     private data class Vec(val x: Float, val y: Float)
