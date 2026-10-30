@@ -148,8 +148,10 @@ class SketchView(context: Context) : View(context) {
 fun DrawingScreen(onBack: () -> Unit, onShare: (Bitmap) -> Unit) {
     var colorIndex by remember { mutableStateOf(0) }
     val thick = 8f
-    val palette = listOf(
-        Color(0xFFFFFFFF), Color(0xFFFF7AC6), 0xFF35D6C8.toInt(), 0xFFFFC46B.toInt(),
+    // ARGB ints — Compose derives the swatch colour from the same value.
+    val paletteArgb: List<Int> = listOf(
+        0xFFFFFFFF.toInt(), 0xFFFF7AC6.toInt(),
+        0xFF35D6C8.toInt(), 0xFFFFC46B.toInt(),
         0xFF7C5CFF.toInt(), 0xFF66E27A.toInt(), 0xFFFF6B81.toInt()
     )
     val viewRef = remember { arrayOfNulls<SketchView>(1) }
