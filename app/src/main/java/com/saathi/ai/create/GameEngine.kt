@@ -23,7 +23,7 @@ object GameEngine {
 
     data class LudoState(
         val positions: MutableMap<LudoColor, MutableList<Int>> = mutableMapOf(), // -1 = base, 0..51 track, 52..57 home
-        val turn: LudoColor = LudoColor.RED,
+        var turn: LudoColor = LudoColor.RED,
         val lastRoll: Int = 0,
         val finished: MutableList<LudoColor> = mutableListOf()
     ) {

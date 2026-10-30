@@ -135,8 +135,9 @@ class ToolExecutor(private val context: Context) {
                                 "ছক্কা $roll — কোনো চাল সম্ভব না, পালা বদলাল।\n" + engine.ludoBoard(st)
                             } else {
                                 val token = a.int("token", legal.first()).coerceIn(0, 3)
-                                val move = x@ run {
-                                    if (token !in legal) return@x "টোকেন ${token + 1} এখন চালানো যাবে না"
+                                val move = if (token !in legal) {
+                                    "টোকেন ${token + 1} এখন চালানো যাবে না"
+                                } else {
                                     engine.ludoMove(st, token, roll)
                                 }
                                 engine.nextTurn(st)
