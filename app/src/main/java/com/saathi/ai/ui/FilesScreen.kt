@@ -109,7 +109,7 @@ fun FilesScreen(onBack: () -> Unit) {
             }
 
             LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-                items(entries) { e ->
+                items(entries) { e: FileTools.Entry ->
                     Row(
                         Modifier
                             .fillMaxWidth()

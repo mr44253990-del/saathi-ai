@@ -39,7 +39,10 @@ import com.saathi.ai.data.SecurePrefs
 import com.saathi.ai.hotword.HotwordService
 import com.saathi.ai.live.Phase
 import com.saathi.ai.live.SessionHub
+import com.saathi.ai.ui.FilesScreen
+import com.saathi.ai.ui.GamesScreen
 import com.saathi.ai.ui.HomeScreen
+import com.saathi.ai.ui.HubScreen
 import com.saathi.ai.ui.MemoryScreen
 
 import com.saathi.ai.ui.PermissionsScreen
@@ -91,6 +94,7 @@ class MainActivity : ComponentActivity() {
                     bubbleOn = bubbleOn,
                     hotwordOn = hotwordOn,
                     onThemeChanged = { themeSpec = resolveTheme(it, prefs.accentOverride) },
+                    onAccentChanged = { themeSpec = resolveTheme(prefs.themeId, it) },
                     onStartSession = { startSession() },
                     onEndSession = {
                         stopCamera()
@@ -300,6 +304,7 @@ private fun JimiApp(
     bubbleOn: Boolean,
     hotwordOn: Boolean,
     onThemeChanged: (String) -> Unit,
+    onAccentChanged: (Int) -> Unit = {},
     onStartSession: () -> Unit,
     onEndSession: () -> Unit,
     onSetMic: (Boolean) -> Unit,
@@ -417,8 +422,8 @@ private fun JimiApp(
                 },
                 onSaved = { configured = prefs.isConfigured },
                 onOpenThemes = { returnTo = "settings"; screen = "themes" },
-                onThemeChanged = { themeSpec = resolveTheme(it, prefs.accentOverride) },
-                onAccentChanged = { themeSpec = resolveTheme(prefs.themeId, it) }
+                onThemeChanged = onThemeChanged,
+                onAccentChanged = onAccentChanged
             )
 
             else -> HomeScreen(

@@ -301,7 +301,7 @@ object OfflinePacks {
             found.isNotEmpty() && failed == 0 ->
                 "✅ «${pack.bangla}» হয়ে গেছে — স্ক্রিনে মিল: ${found.joinToString(", ")}"
             found.isNotEmpty() ->
-                "⚠️ «${pack.bangla}» বেশিরভাগ হয়েছে, কিন্তু $failedটি ধাপ ঠিকমতো বসেনি। স্ক্রিনে মিল: ${found.joinToString(", ")}"
+                "⚠️ «${pack.bangla}» বেশিরভাগ হয়েছে, কিন্তু ${failed}টি ধাপ ঠিকমতো বসেনি। স্ক্রিনে মিল: ${found.joinToString(", ")}"
             else ->
                 "❌ «${pack.bangla}» শেষ হয়নি — স্ক্রিনে প্রমাণ পাওয়া যায়নি। যা করেছি তার রিপোর্ট নিচে।"
         }
