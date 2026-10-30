@@ -2,6 +2,7 @@ package com.saathi.ai.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -47,7 +48,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.saathi.ai.bubble.BubbleService
 import com.saathi.ai.data.SecurePrefs
+import com.saathi.ai.hotword.HotwordService
 import com.saathi.ai.ui.theme.Aqua
 import com.saathi.ai.ui.theme.TextMuted
 import com.saathi.ai.ui.theme.TextPrimary
@@ -69,6 +72,7 @@ fun SettingsScreen(
     var showTranscript by remember { mutableStateOf(prefs.showTranscript) }
     var searchGrounding by remember { mutableStateOf(prefs.searchGrounding) }
     var revealKey by remember { mutableStateOf(false) }
+    var memory by remember { mutableStateOf(prefs.recall()) }
     var saved by remember { mutableStateOf(false) }
 
     SaathiBackground {
@@ -206,7 +210,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(14.dp))
 
             // ---------- Persona
-            SectionCard(title = "সাথীর ব্যক্তিত্ব", icon = "💜") {
+            SectionCard(title = "Jimi-র ব্যক্তিত্ব", icon = "💜") {
                 OutlinedTextField(
                     value = persona,
                     onValueChange = { persona = it },
@@ -233,17 +237,89 @@ fun SettingsScreen(
             Spacer(Modifier.height(14.dp))
 
             // ---------- Toggles
+            SectionCard(title = "Jimi-কে ডাকো", icon = "✨") {
+                ToggleRow(
+                    title = "\"হেই Jimi\" ওয়েক-ওয়ার্ড",
+                    subtitle = "মাইক বন্ধ থাকলেও যেকোনো অ্যাপ থেকে ডাকলেই Jimi জেগে উঠবে",
+                    checked = prefs.hotwordEnabled,
+                    onChange = {
+                        prefs.hotwordEnabled = it
+                        val ctx = context
+                        if (it) HotwordService.start(ctx) else HotwordService.stop(ctx)
+                    }
+                )
+                Spacer(Modifier.height(10.dp))
+                ToggleRow(
+                    title = "ফ্লোটিং বাবল",
+                    subtitle = "কাজ করার সময় ছোট গোল আইকনে নেমে সবসময় হাতের কাছে থাকবে",
+                    checked = prefs.bubbleEnabled,
+                    onChange = {
+                        if (!it) {
+                            prefs.bubbleEnabled = false
+                            BubbleService.hide(context)
+                        } else if (Settings.canDrawOverlays(context)) {
+                            prefs.bubbleEnabled = true
+                            BubbleService.show(context)
+                        } else {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(
+                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:" + context.packageName)
+                                    )
+                                )
+                            }
+                        }
+                    }
+                )
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmallAction("Accessibility সেটিংস") {
+                        runCatching {
+                            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        }
+                    }
+                    SmallAction("সব অনুমতি") {
+                        runCatching {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:" + context.packageName)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            SectionCard(title = "Jimi-র মনে রাখা কথা", icon = "🧠") {
+                Text(
+                    text = if (memory.isBlank()) "এখনো কিছু মনে নেই। কথা বলার সময় Jimi নিজেই মনে রাখার মতো তথ্য সেভ করবে।"
+                    else memory,
+                    color = if (memory.isBlank()) TextMuted else TextPrimary.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp
+                )
+                if (memory.isNotBlank()) {
+                    Spacer(Modifier.height(12.dp))
+                    SmallAction("সব ভুলে যাও") {
+                        prefs.forgetAll()
+                        memory = ""
+                    }
+                }
+            }
+
             SectionCard(title = "অ্যাডভান্সড", icon = "⚙️") {
                 ToggleRow(
                     title = "কথার লিখিত রূপ দেখাও",
-                    subtitle = "তুমি আর সাথী কী বলছে, স্ক্রিনে লেখা আকারে দেখাবে",
+                    subtitle = "তুমি আর Jimi কী বলছে, স্ক্রিনে লেখা আকারে দেখাবে",
                     checked = showTranscript,
                     onChange = { showTranscript = it }
                 )
                 Spacer(Modifier.height(10.dp))
                 ToggleRow(
                     title = "Google Search গ্রাউন্ডিং",
-                    subtitle = "সাথী দরকারমতো লাইভ তথ্য খুঁজে উত্তর দিতে পারবে",
+                    subtitle = "Jimi দরকারমতো লাইভ তথ্য খুঁজে উত্তর দিতে পারবে",
                     checked = searchGrounding,
                     onChange = { searchGrounding = it }
                 )
@@ -275,6 +351,20 @@ fun SettingsScreen(
             )
             Spacer(Modifier.height(26.dp))
         }
+    }
+}
+
+@Composable
+private fun SmallAction(label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color.White.copy(alpha = 0.09f))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 9.dp)
+    ) {
+        Text(label, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 

@@ -127,6 +127,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(HotwordService.EXTRA_WAKE, false)) {
+            SessionHub.update { it.copy(phase = Phase.CONNECTING) }
+            LiveSessionService.start(this)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         refreshSpecial()
