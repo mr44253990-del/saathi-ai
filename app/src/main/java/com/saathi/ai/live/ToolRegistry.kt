@@ -404,6 +404,78 @@ object ToolRegistry {
             listOf("package", "goal")
         )
 
+
+        // ---- files
+        list += fn(
+            "list_files",
+            "List a folder on the phone (downloads, dcim, pictures, movies, music, documents or any visible folder).",
+            mapOf("path" to ("STRING" to "Folder name or full path"), "limit" to ("NUMBER" to "How many entries")),
+            listOf("path")
+        )
+        list += fn(
+            "find_file",
+            "Search the phone for a file by name.",
+            mapOf("query" to ("STRING" to "File name fragment")),
+            listOf("query")
+        )
+        list += fn("file_info", "Size, path and modification time of a file.", mapOf("path" to ("STRING" to "File path")), listOf("path"))
+        list += fn(
+            "copy_file",
+            "Copy a file into a folder (works inside Jimi-readable folders; otherwise use copy_file_via_ui).",
+            mapOf("path" to ("STRING" to "Source file"), "to" to ("STRING" to "Destination folder")),
+            listOf("path", "to")
+        )
+        list += fn(
+            "move_file",
+            "Move a file into a folder.",
+            mapOf("path" to ("STRING" to "Source file"), "to" to ("STRING" to "Destination folder")),
+            listOf("path", "to")
+        )
+        list += fn("delete_file", "Delete a file.", mapOf("path" to ("STRING" to "File path")), listOf("path"))
+        list += fn(
+            "new_folder",
+            "Create a folder.",
+            mapOf("in" to ("STRING" to "Parent folder"), "name" to ("STRING" to "New folder name")),
+            listOf("name")
+        )
+        list += fn("share_file", "Share a file through the Android share sheet.", mapOf("path" to ("STRING" to "File path")), listOf("path"))
+        list += fn("open_files_app", "Open the system Files app.", mapOf("folder" to ("STRING" to "Optional folder")))
+        list += fn(
+            "copy_file_via_ui",
+            "Copy a file using the Files app UI (long-press → copy → open folder → paste). Use this for folders Android blocks direct access to.",
+            mapOf("file" to ("STRING" to "Visible file name"), "folder" to ("STRING" to "Destination folder name")),
+            listOf("file", "folder")
+        )
+
+
+        // ---- games
+        list += fn(
+            "game_start",
+            "Start a board game you play with the user: ludo (লুডু), chess (দাবা) or carrom (ক্যারম).",
+            mapOf("game" to ("STRING" to "ludo | chess | carrom")),
+            listOf("game")
+        )
+        list += fn(
+            "game_move",
+            "Make one move. Ludo: pass roll/token. Chess: pass a move like e2e4. Carrom: pass dx/aim/power.",
+            mapOf(
+                "game" to ("STRING" to "ludo | chess | carrom"),
+                "roll" to ("NUMBER" to "Ludo dice 1-6, optional"),
+                "token" to ("NUMBER" to "Ludo token 0-3"),
+                "move" to ("STRING" to "Chess move, e.g. e2e4"),
+                "dx" to ("NUMBER" to "Carrom striker shift %"),
+                "aim" to ("NUMBER" to "Carrom aim degrees"),
+                "power" to ("NUMBER" to "Carrom power %")
+            ),
+            listOf("game")
+        )
+        list += fn(
+            "game_board",
+            "Show the current board / state of the game being played.",
+            mapOf("game" to ("STRING" to "ludo | chess | carrom")),
+            listOf("game")
+        )
+
         // ---- memory
         list += fn(
             "remember",
@@ -452,5 +524,10 @@ object ToolRegistry {
         • স্লাইডার/ক্রপ/জুম সরাতে gesture_drag বা gesture_drag_element, ছবি ঘোরাতে gesture_rotate,
           ম্যাপে gesture_two_finger_scroll — এক আঙুলে হবে না এমন জায়গায় দুই-তিন আঙুল ব্যবহার করো।
         • একই কাজ দুইবার করবে না। টুল "হয়েছে" বললে ধরে নাও কাজ হয়েছে, আবার সার্চ দিও না।
+        • ফাইল নিয়ে কাজ (কপি/মুভ/খোঁজা) হলে list_files/find_file দিয়ে শুরু করো;
+          অ্যান্ড্রয়েড ব্লক করলে copy_file_via_ui দিয়ে Files অ্যাপের ভেতর থেকেই করো।
+        • নতুন অ্যাপ হলে launch_app দিয়ে খোলো (নাম বাংলায় বললেও চিনবে), ওটা কী কাজের সেটাও বলবে।
+        • কেউ খেলতে চাইলে game_start → game_move ধারাবাহিকভাবে চালাও, প্রতিবার game_board দিয়ে
+          অবস্থা দেখো। নিয়ম কখনো ভাঙবে না, এবং চাল দেওয়ার আগে ছোট করে বলো কী দিচ্ছ।
     """
 }

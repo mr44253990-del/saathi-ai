@@ -5,6 +5,7 @@ import com.saathi.ai.access.JimiAccessibilityService
 import com.saathi.ai.access.PhoneTools
 import com.saathi.ai.access.SmartTools
 import com.saathi.ai.access.AppKnowledge
+import com.saathi.ai.access.FileTools
 import com.saathi.ai.data.SecurePrefs
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -18,6 +19,7 @@ class ToolExecutor(private val context: Context) {
     private val tools = PhoneTools(context)
     private val smart = SmartTools(context)
     private val apps = AppKnowledge(context)
+    private val files = FileTools(context)
     private val prefs = SecurePrefs(context)
 
     /**
@@ -84,6 +86,101 @@ class ToolExecutor(private val context: Context) {
                     .take(a.int("limit", 25))
                     .joinToString("\n") { "${it.label} — ${it.purpose}" }
                 "app_purpose" -> apps.purposeOf(a.str("package"))
+                // ---- files
+                "list_files" -> files.list(a.str("path"), a.int("limit", 25))
+                    .joinToString("\n") { (if (it.isDir) "📁 " else "📄 ") + it.name + (if (it.isDir) "" else "  " + files.humanSize(it.size)) }
+                    .ifBlank { "ফোল্ডার খালি বা পড়া যাচ্ছে না" }
+                "find_file" -> files.find(a.str("query"))
+                    .joinToString("\n") { it.path }
+                    .ifBlank { "কিছু পাওয়া যায়নি" }
+                "file_info" -> files.info(a.str("path"))
+                "copy_file" -> files.copy(a.str("path"), a.str("to"))
+                "move_file" -> files.move(a.str("path"), a.str("to"))
+                "delete_file" -> files.delete(a.str("path"))
+                "new_folder" -> files.newFolder(a.str("in"), a.str("name"))
+                "share_file" -> files.share(a.str("path"))
+                "open_files_app" -> files.openInFilesApp(a.str("folder"))
+                "copy_file_via_ui" -> files.copyViaUi(a.str("file"), a.str("folder"))
+
+                // ---- games
+                "game_start" -> {
+                    when (a.str("game").lowercase()) {
+                        "ludo", "লুডু" -> {
+                            com.saathi.ai.create.GameEngine.ludo = com.saathi.ai.create.GameEngine.LudoState.new()
+                            "লুডু শুরু! তুমি সবুজ, আমি লাল। চাইলে «ছক্কা» বলো।"
+                        }
+                        "chess", "দাবা" -> {
+                            com.saathi.ai.create.GameEngine.chess = com.saathi.ai.create.GameEngine.ChessState()
+                            com.saathi.ai.create.GameEngine.chessBoard(com.saathi.ai.create.GameEngine.chess!!)
+                        }
+                        "carrom", "ক্যারম" -> {
+                            com.saathi.ai.create.GameEngine.carrom = com.saathi.ai.create.GameEngine.CarromState()
+                            "ক্যারম বোর্ড তৈরি। স্ট্রাইকার ঠিক করে মারো।"
+                        }
+                        else -> "লুডু, দাবা বা ক্যারম — কোনটা?"
+                    }
+                }
+                "game_move" -> {
+                    val engine = com.saathi.ai.create.GameEngine
+                    when (a.str("game").lowercase()) {
+                        "ludo", "লুডু" -> {
+                            val st = engine.ludo
+                            if (st == null) {
+                                "আগে game_start দিয়ে লুডু শুরু করো"
+                            } else {
+                            val roll = a.int("roll", 0).takeIf { it in 1..6 } ?: engine.rollDice()
+                            val legal = engine.ludoLegalMoves(st, roll)
+                            if (legal.isEmpty()) {
+                                engine.nextTurn(st)
+                                "ছক্কা $roll — কোনো চাল সম্ভব না, পালা বদলাল।\n" + engine.ludoBoard(st)
+                            } else {
+                                val token = a.int("token", legal.first()).coerceIn(0, 3)
+                                val move = x@ run {
+                                    if (token !in legal) return@x "টোকেন ${token + 1} এখন চালানো যাবে না"
+                                    engine.ludoMove(st, token, roll)
+                                }
+                                engine.nextTurn(st)
+                                "$move (ছক্কা $roll)\n" + engine.ludoBoard(st)
+                            }
+                            }
+                        }
+                        "chess", "দাবা" -> {
+                            val st = engine.chess
+                            if (st == null) {
+                                "আগে game_start দিয়ে দাবা শুরু করো"
+                            } else {
+                                val move = a.str("move")
+                                if (move.length != 4) engine.chessBoard(st)
+                                else engine.chessApply(st, move) + "\n" + engine.chessBoard(st)
+                            }
+                        }
+                        "carrom", "ক্যারম" -> {
+                            val st = engine.carrom
+                            if (st == null) {
+                                "আগে game_start দিয়ে ক্যারম শুরু করো"
+                            } else {
+                                engine.adjust(
+                                    st,
+                                    a.num("dx").toFloat() / 100f,
+                                    a.num("aim").toFloat(),
+                                    a.num("power").toFloat() / 100f
+                                )
+                                engine.carromHint(st)
+                            }
+                        }
+                        else -> "কোন গেম?"
+                    }
+                }
+                "game_board" -> {
+                    val engine = com.saathi.ai.create.GameEngine
+                    when (a.str("game").lowercase()) {
+                        "ludo", "লুডু" -> engine.ludo?.let { engine.ludoBoard(it) } ?: "লুডু চলছে না"
+                        "chess", "দাবা" -> engine.chess?.let { engine.chessBoard(it) } ?: "দাবা চলছে না"
+                        "carrom", "ক্যারম" -> engine.carrom?.let { engine.carromHint(it) } ?: "ক্যারম চলছে না"
+                        else -> engine.describe(a.str("game"))
+                    }
+                }
+
                 "remember_playbook" -> {
                     val steps = a.optJSONArray("steps")
                     val list = (0 until (steps?.length() ?: 0)).map { steps!!.optString(it) }
