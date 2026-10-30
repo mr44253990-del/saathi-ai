@@ -12,7 +12,6 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import androidx.compose.ui.graphics.toArgb
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -496,6 +495,14 @@ class JimiBubble(private val context: Context) {
         }
 
         companion object {
+            private fun argb(c: androidx.compose.ui.graphics.Color): Int =
+                android.graphics.Color.argb(
+                    (c.alpha * 255f).toInt(),
+                    (c.red * 255f).toInt(),
+                    (c.green * 255f).toInt(),
+                    (c.blue * 255f).toInt()
+                )
+
             fun from(context: Context): BubblePalette {
                 val spec = com.saathi.ai.ui.theme.JimiThemes.get(
                     com.saathi.ai.data.SecurePrefs(context).themeId
@@ -504,9 +511,9 @@ class JimiBubble(private val context: Context) {
                 val sp = context.getSharedPreferences("jimi_bubble", Context.MODE_PRIVATE)
                 val dm = context.resources.displayMetrics
                 return BubblePalette(
-                    primary = androidx.compose.ui.graphics.toArgb(p.primary),
-                    secondary = androidx.compose.ui.graphics.toArgb(p.secondary),
-                    accent = androidx.compose.ui.graphics.toArgb(p.accent),
+                    primary = argb(p.primary),
+                    secondary = argb(p.secondary),
+                    accent = argb(p.accent),
                     savedX = sp.getInt("x", 20),
                     savedY = sp.getInt("y", (dm.heightPixels * 0.62f).toInt())
                 ).also { it.contextRef = context }
