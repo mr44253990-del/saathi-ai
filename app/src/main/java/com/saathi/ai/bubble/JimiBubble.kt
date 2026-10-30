@@ -95,7 +95,7 @@ class JimiBubble(private val context: Context) {
                     touchX = event.rawX
                     touchY = event.rawY
                     moved = false
-                    orbView.pressed = true
+                    orbView.isPressedNow = true
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -110,7 +110,7 @@ class JimiBubble(private val context: Context) {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    orbView.pressed = false
+                    orbView.isPressedNow = false
                     if (moved) {
                         snapToEdge(lp, size)
                         runCatching { wm.updateViewLayout(frame, lp) }
@@ -349,7 +349,7 @@ class JimiBubble(private val context: Context) {
                 invalidate()
             }
 
-        var pressed = false
+        var isPressedNow = false
             set(value) {
                 field = value
                 invalidate()
@@ -387,7 +387,7 @@ class JimiBubble(private val context: Context) {
             val cx = w / 2f
             val cy = h / 2f
             val r = min(w, h) / 2f
-            val scale = if (pressed) 0.9f else 1f
+            val scale = if (isPressedNow) 0.9f else 1f
             val mood = when (phase) {
                 Phase.LISTENING -> 1f
                 Phase.SPEAKING -> 1f
