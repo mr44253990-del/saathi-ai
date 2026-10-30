@@ -318,6 +318,10 @@ fun SettingsScreen(
                     }
                 }
                 Spacer(Modifier.height(10.dp))
+                SmallAction("ডিজিটাল অ্যাসিস্ট্যান্ট সেট করো") {
+                    com.saathi.ai.assist.AssistantSetup.openAssistantSettings(context)
+                }
+                Spacer(Modifier.height(10.dp))
                 Text(
                     "ডিজিটাল অ্যাসিস্ট্যান্ট বানাতে: Settings → Apps → Default apps → Digital assistant app → Jimi। " +
                         "এরপর হোম বাটন চেপে ধরে বা পাওয়ার বাটন চেপে ধরে Jimi ডাকতে পারবে। Quick Settings-এ Jimi টাইলও যোগ করা যায়।",

@@ -134,10 +134,17 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Invoked for the "Hey Jimi" notification tap / assist gesture / QS tile. */
+    /**
+     * One entry point for every "wake Jimi" path: hotword notification, digital
+     * assistant gesture, Quick Settings tile, and the in-app button.
+     * It starts the live session immediately (auto-connect) when the mic exists.
+     */
     private fun wakeUp() {
         SessionHub.update { it.copy(phase = Phase.CONNECTING, error = null) }
         if (hasMic()) {
             LiveSessionService.start(this)
+        } else {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 900)
         }
     }
 
