@@ -156,8 +156,8 @@ class GestureEngine(private val service: AccessibilityService) {
         }
         return dispatch(
             listOf(
-                Stroke(Vec(pathA), 0, 560),
-                Stroke(Vec(pathB), 0, 560)
+                Stroke(pathA, 0, 560),
+                Stroke(pathB, 0, 560)
             )
         )
     }
@@ -232,9 +232,14 @@ class GestureEngine(private val service: AccessibilityService) {
         val start: Vec,
         val rest: List<Vec>,
         val startDelay: Long,
-        val duration: Long
+        val duration: Long,
+        val explicitPath: Path? = null
     ) {
-        constructor(point: Vec, startDelay: Long, duration: Long) : this(point, emptyList(), startDelay, duration)
+        constructor(point: Vec, startDelay: Long, duration: Long) :
+            this(point, emptyList(), startDelay, duration)
+
+        constructor(path: Path, startDelay: Long, duration: Long) :
+            this(Vec(0f, 0f), emptyList(), startDelay, duration, path)
     }
 
     private fun dispatch(strokes: List<Stroke>): Boolean {
@@ -242,7 +247,7 @@ class GestureEngine(private val service: AccessibilityService) {
         if (strokes.isEmpty()) return false
         val builder = GestureDescription.Builder()
         for (s in strokes) {
-            val path = Path().apply {
+            val path = s.explicitPath ?: Path().apply {
                 moveTo(s.start.x, s.start.y)
                 for (p in s.rest) lineTo(p.x, p.y)
             }
