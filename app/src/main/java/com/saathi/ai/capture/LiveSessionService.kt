@@ -51,6 +51,12 @@ class LiveSessionService : Service(), LiveClient.Listener {
     @Volatile
     private var wantMic = true
 
+    @Volatile
+    private var projectionTypeAdded = false
+
+    @Volatile
+    private var cameraTypeAdded = false
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -60,7 +66,10 @@ class LiveSessionService : Service(), LiveClient.Listener {
         createNotificationChannel()
         startForegroundSafely()
 
-        SessionHub.cameraFrameSink = { jpeg -> client?.sendVideoFrame(jpeg) }
+        SessionHub.cameraFrameSink = { jpeg ->
+            ensureCameraType()
+            client?.sendVideoFrame(jpeg)
+        }
         SessionHub.update { it.copy(model = prefs.model) }
 
         player = PcmPlayer().also { it.start() }
@@ -226,6 +235,7 @@ class LiveSessionService : Service(), LiveClient.Listener {
 
     fun startScreenShare(resultCode: Int, data: Intent?): Boolean {
         if (data == null) return false
+        ensureProjectionType()
         val source = ScreenFrameSource(this)
         val ok = source.start(
             resultCode,
@@ -308,12 +318,14 @@ class LiveSessionService : Service(), LiveClient.Listener {
     private fun startForegroundSafely() {
         val notification = buildNotification(getString(R.string.status_connecting))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-                types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
-            }
-            startForeground(NOTIF_ID, notification, types)
+            // Only declare the microphone type up-front. Projection/camera types are
+            // added later by [ensureProjectionType] / [ensureCameraType] — on Android 14+
+            // declaring a type before its permission/consent exists throws.
+            startForeground(
+                NOTIF_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
         } else {
             startForeground(NOTIF_ID, notification)
         }
@@ -329,6 +341,41 @@ class LiveSessionService : Service(), LiveClient.Listener {
         runCatching {
             val mgr = getSystemService(NotificationManager::class.java)
             mgr.notify(NOTIF_ID, buildNotification(text))
+        }
+    }
+
+    /**
+     * Add the `mediaProjection` foreground type once the user has actually given
+     * consent (required on Android 14+ before a MediaProjection can be created).
+     */
+    private fun ensureProjectionType() {
+        if (projectionTypeAdded) return
+        projectionTypeAdded = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching {
+                startForeground(
+                    NOTIF_ID,
+                    buildNotification(getString(R.string.status_listening)),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+            }
+        }
+    }
+
+    /** Add the `camera` foreground type while camera frames are being streamed. */
+    private fun ensureCameraType() {
+        if (cameraTypeAdded) return
+        cameraTypeAdded = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching {
+                startForeground(
+                    NOTIF_ID,
+                    buildNotification(getString(R.string.status_listening)),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                )
+            }
         }
     }
 
