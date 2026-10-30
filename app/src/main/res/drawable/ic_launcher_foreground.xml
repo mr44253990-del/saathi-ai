@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- outer glow ring -->
+    <path
+        android:pathData="M54,26 A28,28 0 1,1 53.9,26"
+        android:strokeWidth="2.4"
+        android:strokeAlpha="0.55">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="26"
+                android:startY="26"
+                android:endX="82"
+                android:endY="82"
+                android:startColor="#7C5CFF"
+                android:centerColor="#35D6C8"
+                android:endColor="#FF7AC6" />
+        </aapt:attr>
+    </path>
+
+    <!-- inner orb -->
+    <path android:pathData="M54,34 A20,20 0 1,1 53.9,34">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="48"
+                android:centerY="46"
+                android:gradientRadius="30"
+                android:startColor="#8E7BFF"
+                android:centerColor="#4C5CE8"
+                android:endColor="#1B1F52" />
+        </aapt:attr>
+    </path>
+
+    <!-- highlight -->
+    <path
+        android:pathData="M54,38 A16,16 0 0,1 68,50 A18,18 0 0,0 54,38 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.16" />
+
+    <!-- spark / voice mark -->
+    <path
+        android:pathData="M54,44 l2.2,7.8 l7.8,2.2 l-7.8,2.2 l-2.2,7.8 l-2.2,-7.8 l-7.8,-2.2 l7.8,-2.2 z"
+        android:fillColor="#F4F1FF" />
+    <path
+        android:pathData="M66.5,62 l1.1,3.9 l3.9,1.1 l-3.9,1.1 l-1.1,3.9 l-1.1,-3.9 l-3.9,-1.1 l3.9,-1.1 z"
+        android:fillColor="#9BE9E1"
+        android:fillAlpha="0.95" />
+    <path
+        android:pathData="M41,60 l0.9,3.2 l3.2,0.9 l-3.2,0.9 l-0.9,3.2 l-0.9,-3.2 l-3.2,-0.9 l3.2,-0.9 z"
+        android:fillColor="#FFC2E4"
+        android:fillAlpha="0.85" />
+</vector>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">সাথী</string>
+    <string name="app_tagline">তোমার সবসময়ের AI সঙ্গী</string>
+
+    <string name="status_connecting">সংযোগ হচ্ছে…</string>
+    <string name="status_listening">শুনছি…</string>
+    <string name="status_reconnecting">আবার যুক্ত হচ্ছি…</string>
+    <string name="status_error">সংযোগে সমস্যা</string>
+
+    <string name="error_no_key">আগে সেটিংসে তোমার Gemini API Key সেভ করো।</string>
+
+    <string name="notif_channel">সাথীর সেশন</string>
+    <string name="notif_title">সাথী সক্রিয় আছে</string>
+    <string name="notif_text">কথা বলতে ট্যাপ করো</string>
+    <string name="notif_stop">বন্ধ করো</string>
+</resources>

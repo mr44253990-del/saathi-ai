@@ -1,0 +1,25 @@
+# macOS / Windows junk
+.DS_Store
+Thumbs.db
+
+# Gradle / Android build output
+.gradle/
+build/
+app/build/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+*.iml
+.idea/
+
+# Signing material — NEVER commit these
+keystore.properties
+*.jks
+*.keystore
+
+# Kotlin
+.kotlin/
+
+# Logs
+*.log
