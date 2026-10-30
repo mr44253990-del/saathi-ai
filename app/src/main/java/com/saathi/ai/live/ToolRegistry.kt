@@ -200,6 +200,79 @@ object ToolRegistry {
         )
 
 
+
+        // ---- human-like gestures (multi-touch, drag, hold)
+        list += fn(
+            "gesture_drag",
+            "Drag from one point to another with a realistic finger arc. Use for sliders, scrub bars, panning maps, moving a photo in an editor.",
+            mapOf(
+                "from_x" to ("NUMBER" to "Start X"), "from_y" to ("NUMBER" to "Start Y"),
+                "to_x" to ("NUMBER" to "End X"), "to_y" to ("NUMBER" to "End Y"),
+                "ms" to ("NUMBER" to "Duration in ms, default 340")
+            ),
+            listOf("from_x", "from_y", "to_x", "to_y")
+        )
+        list += fn(
+            "gesture_hold_drag",
+            "Press and hold, then drag — reorder lists, move a widget, drag a slider that needs a long press first.",
+            mapOf(
+                "from_x" to ("NUMBER" to "Start X"), "from_y" to ("NUMBER" to "Start Y"),
+                "to_x" to ("NUMBER" to "End X"), "to_y" to ("NUMBER" to "End Y")
+            ),
+            listOf("from_x", "from_y", "to_x", "to_y")
+        )
+        list += fn(
+            "gesture_drag_element",
+            "Drag the element that shows this text by dx/dy pixels. Perfect for the crop/zoom slider in a photo editor.",
+            mapOf(
+                "text" to ("STRING" to "Visible label of the element"),
+                "dx" to ("NUMBER" to "Horizontal pixels"),
+                "dy" to ("NUMBER" to "Vertical pixels")
+            ),
+            listOf("text")
+        )
+        list += fn(
+            "gesture_pinch",
+            "Two-finger pinch to zoom in or out (photos, maps, camera).",
+            mapOf("zoom_in" to ("BOOLEAN" to "true = zoom in"))
+        )
+        list += fn(
+            "gesture_swipe",
+            "One-finger swipe in a direction.",
+            mapOf("direction" to ("STRING" to "up | down | left | right"))
+        )
+        list += fn(
+            "gesture_two_finger_scroll",
+            "Two-finger scroll — needed inside map/photo editors where a one-finger drag moves content instead of scrolling.",
+            mapOf("down" to ("BOOLEAN" to "true = scroll down"))
+        )
+        list += fn(
+            "gesture_rotate",
+            "Two-finger rotate (photo rotation, 3-D viewers).",
+            mapOf("degrees" to ("NUMBER" to "Rotate by this many degrees"))
+        )
+        list += fn(
+            "gesture_multi_finger",
+            "Simultaneous multi-finger swipe/tap — 3-finger screenshot, 4-finger gestures, OEM shortcuts.",
+            mapOf(
+                "fingers" to ("NUMBER" to "2-10 fingers"),
+                "dx" to ("NUMBER" to "Horizontal travel"),
+                "dy" to ("NUMBER" to "Vertical travel"),
+                "ms" to ("NUMBER" to "Duration")
+            ),
+            listOf("fingers")
+        )
+        list += fn("open_notifications", "Pull down the notification shade.")
+        list += fn("back", "Press the system back button.")
+
+        // ---- agentic
+        list += fn(
+            "run_goal",
+            "Hand a multi-step goal to Jimi's on-device Autopilot. It then loops on its own: read the screen, find the best element, tap/type/drag, verify, and continue up to 22 steps. Use this for long tasks such as 'প্লে স্টোরে গিয়ে এই অ্যাপ ইনস্টল করো', 'গ্যালারির ছবি এডিট করে সেভ করো', 'ফেসবুকে স্টোরি দাও'.",
+            mapOf("goal" to ("STRING" to "Plain-language goal in Bangla or English")),
+            listOf("goal")
+        )
+
         // ---- smart / everyday
         list += fn(
             "web_search",
@@ -341,5 +414,10 @@ object ToolRegistry {
         • "কপি করা টেক্সট পেস্ট করো" হলে read_clipboard → target অ্যাপে type।
         • টাকা/পেমেন্ট কখনো নিজে confirm করবে না — শুধু স্ক্রিন খুলে দেবে।
         • কাজ শেষ হলে এক-দুই বাক্যে বলো কী করেছ।
+        • লম্বা/জটিল কাজে (এডিটিং, ইনস্টল, পোস্ট, ফাইল কপি) run_goal দিয়ে অটোপাইলট চালাও —
+          সে নিজে ধাপে ধাপে শেষ করবে। ছোট/স্পষ্ট কাজে সরাসরি gesture_* ব্যবহার করো।
+        • স্লাইডার/ক্রপ/জুম সরাতে gesture_drag বা gesture_drag_element, ছবি ঘোরাতে gesture_rotate,
+          ম্যাপে gesture_two_finger_scroll — এক আঙুলে হবে না এমন জায়গায় দুই-তিন আঙুল ব্যবহার করো।
+        • একই কাজ দুইবার করবে না। টুল "হয়েছে" বললে ধরে নাও কাজ হয়েছে, আবার সার্চ দিও না।
     """
 }

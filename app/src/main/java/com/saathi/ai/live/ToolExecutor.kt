@@ -6,6 +6,7 @@ import com.saathi.ai.access.PhoneTools
 import com.saathi.ai.access.SmartTools
 import com.saathi.ai.data.SecurePrefs
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Runs one tool call coming from Gemini and returns the JSON response body that
@@ -17,9 +18,34 @@ class ToolExecutor(private val context: Context) {
     private val smart = SmartTools(context)
     private val prefs = SecurePrefs(context)
 
+    /**
+     * Repeated-call guard.
+     *
+     * The model used to re-issue "search YouTube" three times in a row because each
+     * call looked successful. Now an identical (name, args) pair inside
+     * [DUPLICATE_WINDOW_MS] returns a note instead of firing the action again, so the
+     * conversation moves on instead of looping.
+     */
+    private val lastCalls = ConcurrentHashMap<String, Long>()
+
+    private fun isDuplicate(name: String, args: JSONObject): Boolean {
+        val key = "$name|${args.toString()}"
+        val now = System.currentTimeMillis()
+        val prev = lastCalls[key]
+        if (prev != null && now - prev < DUPLICATE_WINDOW_MS) return true
+        lastCalls[key] = now
+        if (lastCalls.size > 64) {
+            lastCalls.entries.removeIf { now - it.value > DUPLICATE_WINDOW_MS * 4 }
+        }
+        return false
+    }
+
     fun execute(name: String, args: JSONObject): String {
         val a = args
         return try {
+            if (isDuplicate(name, a) && !name.startsWith("read_") && name != "recall") {
+                return "একই কাজ এইমাত্র করেছি ($name) — আবার করছি না। স্ক্রিনে যা হয়েছে সেটা দেখে পরের ধাপে যাও।"
+            }
             when (name) {
                 "open_app" -> tools.openApp(a.str("name"))
                 "open_url" -> tools.openUrl(a.str("url"))
@@ -43,6 +69,52 @@ class ToolExecutor(private val context: Context) {
                 "write_clipboard" -> smart.copy(a.str("text"))
                 "search_youtube" -> tools.searchYouTube(a.str("query"))
                 "play_on_youtube" -> tools.playOnYouTube(a.str("query"))
+
+                // ---- human-like gestures
+                "gesture_tap" -> gesture { it.tap(a.num("x").toFloat(), a.num("y").toFloat()) }
+                "gesture_long_press" -> gesture { it.longPress(a.num("x").toFloat(), a.num("y").toFloat(), a.int("ms", 620).toLong()) }
+                "gesture_drag" -> gesture {
+                    it.dragArc(a.num("from_x").toFloat(), a.num("from_y").toFloat(), a.num("to_x").toFloat(), a.num("to_y").toFloat(), a.int("ms", 340).toLong())
+                }
+                "gesture_hold_drag" -> gesture {
+                    it.holdAndDrag(a.num("from_x").toFloat(), a.num("from_y").toFloat(), a.num("to_x").toFloat(), a.num("to_y").toFloat())
+                }
+                "gesture_drag_element" -> gesture {
+                    it.dragElement(a.str("text"), a.num("dx").toFloat(), a.num("dy").toFloat())
+                }
+                "gesture_pinch" -> gesture {
+                    it.pinch(a.bool("zoom_in", true), null, null)
+                }
+                "gesture_swipe" -> gesture {
+                    when (a.str("direction")) {
+                        "up" -> it.swipeVertical(down = false)
+                        "down" -> it.swipeVertical(down = true)
+                        "left" -> it.swipeHorizontal(right = false)
+                        else -> it.swipeHorizontal(right = true)
+                    }
+                }
+                "gesture_two_finger_scroll" -> gesture { it.twoFingerScroll(a.bool("down", true)) }
+                "gesture_rotate" -> gesture { it.rotate(a.num("degrees").toFloat().takeIf { d -> d != 0f } ?: 45f) }
+                "gesture_multi_finger" -> gesture {
+                    it.multiFinger(
+                        a.int("fingers", 3),
+                        a.num("dx").toFloat(),
+                        a.num("dy").toFloat(),
+                        a.int("ms", 280).toLong()
+                    )
+                }
+                "open_notifications" -> gesture { it.openNotifications() }
+                "back" -> gesture { it.gestureBack() }
+
+                // ---- agentic
+                "run_goal" -> {
+                    val goal = a.str("goal")
+                    val service = JimiAccessibilityService.instance
+                    if (service == null) "Accessibility বন্ধ — কাজটা করতে পারব না"
+                    else com.saathi.ai.access.JimiAccessibilityService.autopilot(goal) { step ->
+                        SessionHub.update { st -> st.copy(bubbleMsg = step) }
+                    }
+                }
 
                 "read_screen" -> tools.readScreen()
                 "screen_tap" -> tools.screenTap(a.str("text"))
@@ -103,10 +175,19 @@ class ToolExecutor(private val context: Context) {
         }
     }
 
+    private inline fun gesture(block: (com.saathi.ai.access.GestureEngine) -> Boolean): String {
+        val svc = JimiAccessibilityService.instance ?: return "Accessibility বন্ধ — চালু করো"
+        return if (block(svc.gestures)) "হয়েছে" else "হয়নি"
+    }
+
     private fun JSONObject.str(key: String): String = optString(key, "")
     private fun JSONObject.num(key: String): Int = optDouble(key, 0.0).toInt()
     private fun JSONObject.bool(key: String, fallback: Boolean): Boolean =
         if (has(key)) optBoolean(key, fallback) else fallback
     private fun JSONObject.int(key: String, fallback: Int): Int =
         if (has(key)) optDouble(key, fallback.toDouble()).toInt() else fallback
+
+    companion object {
+        private const val DUPLICATE_WINDOW_MS = 12_000L
+    }
 }

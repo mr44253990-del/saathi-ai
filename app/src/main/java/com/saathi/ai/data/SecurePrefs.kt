@@ -10,14 +10,14 @@ import androidx.security.crypto.MasterKey
  * EncryptedSharedPreferences (Android Keystore backed), never in plain text
  * and never leaves the device.
  */
-class SecurePrefs(context: Context) {
+class SecurePrefs(private val contextRef: Context) {
 
     private val prefs: SharedPreferences = try {
-        val masterKey = MasterKey.Builder(context)
+        val masterKey = MasterKey.Builder(contextRef)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
         EncryptedSharedPreferences.create(
-            context,
+            contextRef,
             FILE,
             masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
@@ -25,7 +25,7 @@ class SecurePrefs(context: Context) {
         )
     } catch (t: Throwable) {
         // Very rare: some OEM ROMs break the keystore. App must still work.
-        context.getSharedPreferences(FILE + "_fallback", Context.MODE_PRIVATE)
+        contextRef.getSharedPreferences(FILE + "_fallback", Context.MODE_PRIVATE)
     }
 
     var apiKey: String
@@ -87,20 +87,25 @@ class SecurePrefs(context: Context) {
         get() = prefs.getBoolean(KEY_HOTWORD, false)
         set(value) = prefs.edit().putBoolean(KEY_HOTWORD, value).apply()
 
+    /** Autopilot: let Jimi finish multi-step tasks on its own. */
+    var autopilotEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTOPILOT, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTOPILOT, value).apply()
+
     // ---------------------------------------------------------------- long-term memory
+
+    private val store by lazy { MemoryStore(contextRef) }
 
     /** Jimi's memory: "key -> fact" pairs the model asked us to remember. */
     fun remember(key: String, value: String) {
-        val existing = prefs.getString(KEY_MEMORY, "") ?: ""
-        val lines = existing.lines().filter { it.isNotBlank() && !it.startsWith("$key:") }
-        val updated = (lines + "$key: $value").joinToString("\n")
-        prefs.edit().putString(KEY_MEMORY, updated).apply()
+        store.remember(key, value)
     }
 
-    fun recall(): String = prefs.getString(KEY_MEMORY, "") ?: ""
+    fun recall(): String =
+        store.all().joinToString("\n") { "${it.key}: ${it.value}" }
 
     fun forgetAll() {
-        prefs.edit().remove(KEY_MEMORY).apply()
+        store.forgetAll()
     }
 
     /** The full system instruction handed to Gemini Live at session start. */
@@ -111,9 +116,7 @@ class SecurePrefs(context: Context) {
             "en" -> "\n\nAlways reply in English unless the user clearly asks for another language."
             else -> "\n\nReply in whatever language the user is speaking."
         }
-        val memory = recall()
-        val memoryRule = if (memory.isBlank()) "" else
-            "\n\nব্যবহারকারীর সম্পর্কে যা তুমি আগে মনে রেখেছ:\n$memory"
+        val memoryRule = store.promptBlock()
         return base + langRule + memoryRule
     }
 
@@ -127,12 +130,12 @@ class SecurePrefs(context: Context) {
         private const val KEY_TRANSCRIPT = "show_transcript"
         private const val KEY_SEARCH = "search_grounding"
         private const val KEY_ONBOARDING = "onboarding_done"
+        private const val KEY_BUBBLE = "bubble_enabled"
+        private const val KEY_HOTWORD = "hotword_enabled"
         private const val KEY_THEME = "theme_id"
         private const val KEY_ACCENT = "accent_override"
         private const val KEY_INTENSITY = "orb_intensity"
-        private const val KEY_MEMORY = "memory"
-        private const val KEY_BUBBLE = "bubble_enabled"
-        private const val KEY_HOTWORD = "hotword_enabled"
+        private const val KEY_AUTOPILOT = "autopilot_enabled"
 
         const val DEFAULT_MODEL = "gemini-3.8-live"
         const val DEFAULT_VOICE = "Aoede"
@@ -155,7 +158,7 @@ class SecurePrefs(context: Context) {
         val DEFAULT_PERSONA = """
             তুমি "Jimi" — ব্যবহারকারীর একজন উষ্ণ, বুদ্ধিমান, হাসিখুশি আর অসম্ভব দক্ষ AI সহকারী।
             তুমি শুধু কথা বলো না — তুমি ব্যবহারকারীর ফোনটা নিজের হাতে চালাতে পারো (Accessibility দিয়ে
-            ট্যাপ, স্ক্রল, লেখা, অ্যাপ খোলা, কল, এসএমএস, ক্যামেরা, শেয়ার, পেমেন্ট স্ক্রিন)।
+            ট্যাপ, স্ক্রল, লেখা, ড্র্যাগ, মাল্টি-টাচ, অ্যাপ খোলা, কল, এসএমএস, ক্যামেরা, শেয়ার, পেমেন্ট স্ক্রিন)।
             তাই ব্যবহারকারী যখন "একবারে পুরো কাজটা করে দাও" বলে, তুমি থেমে প্রশ্ন করার বদলে
             নিজে থেকেই ধাপগুলো ভেঙে নাও, প্রতিটা ধাপ করো, ফলাফল যাচাই করো, শেষ হলে জানাও।
             নিয়ম:
@@ -166,14 +169,17 @@ class SecurePrefs(context: Context) {
             ৫. সংখ্যা, নাম, ঠিকানা বা গুরুত্বপূর্ণ তথ্য স্পষ্ট করে বলো।
             ৬. ব্যবহারকারী "থামো" বললে সাথে সাথে থেমে যাও।
             ৭. বহু-ধাপের কাজে (যেমন: "টিকটকে ভিডিও আপলোড করো", "ফেসবুকে স্টোরি দাও",
-               "অর্ডার করে দাও", "মেসেজের রিপ্লাই দাও") নিজে থেকে পুরো ধারাবাহিকতা শেষ করো:
+               "অর্ডার করে দাও", "মেসেজের রিপ্লাই দাও", "ছবি এডিট করো") নিজে থেকে পুরো ধারাবাহিকতা শেষ করো:
                অ্যাপ খোলো → স্ক্রিন পড়ো → দরকারি জায়গায় ট্যাপ করো → লেখো → শেয়ার/পোস্ট করো।
-               কোনো ধাপ আটকে গেলে অন্য পথ (long_press, scroll, deep_link, screen_bounds) চেষ্টা করো।
+               কোনো ধাপ আটকে গেলে অন্য পথ (long_press, scroll, deep_link, gesture_*, run_goal) চেষ্টা করো।
             ৮. ব্যবহারকারীর তথ্য (নাম, পরিবার, পছন্দ, ঠিকানা, ওষুধ, রুটিন) মনে রাখার মতো হলে
                remember টুল দিয়ে সেভ করো — পরেরবার নিজে থেকেই কাজে লাগাও।
             ৯. টাকা/পেমেন্ট/কল-কাটার মতো সিদ্ধান্ত কখনো নিজে চূড়ান্ত করবে না; স্ক্রিন খুলে দাও,
                চূড়ান্ত ধাপ ব্যবহারকারীর হাতে ছাড়ো।
             ১০. নিরাপত্তা: কারও ব্যক্তিগত ডেটা চুরি, স্পাই বা প্রতারণায় সাহায্য করবে না।
+            ১১. একই কাজ দুইবার করবে না — "হয়েছে" মানে হয়েছে, আবার সার্চ দিও না।
+            ১২. গেম খেলার সময় (লুডু, দাবা, ক্যারম) সত্যিকারের নিয়ম মেনে চাল চিন্তা করো,
+                বোর্ডের অবস্থা মনে রাখো, আর স্পষ্ট করে বলো কোন চাল দিচ্ছো।
         """.trimIndent()
     }
 }

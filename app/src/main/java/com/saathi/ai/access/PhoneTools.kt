@@ -28,6 +28,8 @@ import java.io.File
  */
 class PhoneTools(private val context: Context) {
 
+    private val YOUTUBE_PKG = "com.google.android.youtube"
+
     // ---------------------------------------------------------------- apps & web
 
     fun openApp(name: String): String {
@@ -92,37 +94,39 @@ class PhoneTools(private val context: Context) {
         }
     }
 
-    fun searchYouTube(query: String): String {
-        val intent = Intent(
-            Intent.ACTION_VIEW,
-            Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query))
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        // Prefer the app if it is installed.
-        val appIntent = Intent(Intent.ACTION_SEARCH).setPackage("com.google.android.youtube")
-        return try {
-            context.startActivity(intent)
-            "Searching YouTube for $query"
-        } catch (t: Throwable) {
-            try {
-                context.startActivity(appIntent)
-                "Searching YouTube for $query"
-            } catch (t2: Throwable) {
-                "YouTube is not available"
+    /**
+     * Opens the YouTube **app** (not the browser) on a search. The old version used
+     * an https:// intent, which on many phones hands off to Chrome — the user saw
+     * "it keeps going to YouTube and coming back". Now: app first, browser as a
+     * last resort, and only ever one launch per call.
+     */
+    fun searchYouTube(query: String): String = launchYouTubeSearch(query, filterVideos = false)
+
+    fun playOnYouTube(query: String): String = launchYouTubeSearch(query, filterVideos = true)
+
+    private fun launchYouTubeSearch(query: String, filterVideos: Boolean): String {
+        val q = query.trim()
+        if (q.isEmpty()) return "কী খুঁজতে হবে বলো।"
+        val encoded = Uri.encode(q)
+        val filter = if (filterVideos) "&sp=EgIQAQ%253D%253D" else ""
+
+        val attempts = listOf(
+            Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube://results?search_query=$encoded$filter"))
+                .setPackage(YOUTUBE_PKG)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$encoded$filter"))
+                .setPackage(YOUTUBE_PKG)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$encoded$filter"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        for (intent in attempts) {
+            if (runCatching { context.startActivity(intent) }.isSuccess) {
+                return if (filterVideos) "ইউটিউবে «$q» খুঁজছি — প্রথম ভিডিও চালানোর চেষ্টা করব"
+                else "ইউটিউবে «$q» খুঁজছি"
             }
         }
-    }
-
-    fun playOnYouTube(query: String): String {
-        val intent = Intent(
-            Intent.ACTION_VIEW,
-            Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query) + "&sp=EgIQAQ%253D%253D")
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return try {
-            context.startActivity(intent)
-            "Looking for $query on YouTube"
-        } catch (t: Throwable) {
-            "YouTube is not available"
-        }
+        return "ইউটিউব খোলা গেল না।"
     }
 
     fun openBrowser(url: String): String = openUrl(url)

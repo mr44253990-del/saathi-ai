@@ -78,6 +78,9 @@ class JimiAccessibilityService : AccessibilityService() {
 
     // ------------------------------------------------------------------ reading
 
+    /** Exposed for Autopilot / GestureEngine. */
+    fun rootOrNull(): AccessibilityNodeInfo? = safeRoot()
+
     private fun safeRoot(): AccessibilityNodeInfo? = try {
         rootInActiveWindow
     } catch (t: Throwable) {
@@ -400,6 +403,9 @@ class JimiAccessibilityService : AccessibilityService() {
         }
     }
 
+    /** Human-like gesture synthesis bound to this service. */
+    val gestures: GestureEngine by lazy { GestureEngine(this) }
+
     companion object {
         private const val TAG = "JimiA11y"
 
@@ -423,6 +429,12 @@ class JimiAccessibilityService : AccessibilityService() {
         val currentApp: StateFlow<String> get() = _currentApp
 
         fun isEnabled(): Boolean = instance != null
+
+        /** Runs a multi-step goal without the model in the loop. */
+        fun autopilot(goal: String, onStep: (String) -> Unit = {}): String {
+            val svc = instance ?: return "Accessibility বন্ধ — চালু করো"
+            return Autopilot(svc, svc.gestures).run(goal, onStep)
+        }
 
         fun screenText(maxChars: Int = 3200): String =
             instance?.dumpScreen(maxChars) ?: "(Accessibility বন্ধ)"
