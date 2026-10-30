@@ -2,6 +2,7 @@ package com.saathi.ai.access
 
 import android.Manifest
 import android.accessibilityservice.AccessibilityService
+import android.app.AlarmClock
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -276,9 +277,9 @@ class PhoneTools(private val context: Context) {
 
     fun setAlarm(text: String): String {
         val intent = try {
-            Intent(android.app.AlarmClock.ACTION_SET_ALARM).apply {
-                putExtra(android.app.AlarmClock.EXTRA_MESSAGE, text)
-                putExtra(android.app.AlarmClock.EXTRA_SKIP_UI, true)
+            Intent(AlarmClock.ACTION_SET_ALARM).apply {
+                putExtra(AlarmClock.EXTRA_MESSAGE, text)
+                putExtra(AlarmClock.EXTRA_SKIP_UI, true)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         } catch (t: Throwable) {
@@ -293,9 +294,9 @@ class PhoneTools(private val context: Context) {
     }
 
     fun setTimer(seconds: Int): String {
-        val intent = Intent(android.app.AlarmClock.ACTION_SET_TIMER).apply {
-            putExtra(android.app.AlarmClock.EXTRA_LENGTH, seconds.coerceAtLeast(1))
-            putExtra(android.app.AlarmClock.EXTRA_SKIP_UI, true)
+        val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {
+            putExtra(AlarmClock.EXTRA_LENGTH, seconds.coerceAtLeast(1))
+            putExtra(AlarmClock.EXTRA_SKIP_UI, true)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         return try {
