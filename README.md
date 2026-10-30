@@ -1,4 +1,4 @@
-# সাথী (Saathi) — Gemini Live AI Companion
+# Jimi 🎙️ — Gemini Live AI সহকারী
 
 > তোমার সবসময়ের AI সঙ্গী — realtime voice, camera vision আর screen understanding সহ,
 > **Google Gemini Live API** দিয়ে সরাসরি ফোন থেকে চলা একটা Android অ্যাপ।
