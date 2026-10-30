@@ -61,7 +61,7 @@ class SketchView(context: Context) : View(context) {
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
-    var inkColor: Int = Color.WHITE
+    var inkColor: Int = android.graphics.Color.WHITE
     var inkWidth: Float = 8f
 
     /** A soft gradient wash behind the drawing so white ink stays visible. */
@@ -149,7 +149,7 @@ fun DrawingScreen(onBack: () -> Unit, onShare: (Bitmap) -> Unit) {
     var colorIndex by remember { mutableStateOf(0) }
     val thick = 8f
     val palette = listOf(
-        Color.WHITE, 0xFFFF7AC6.toInt(), 0xFF35D6C8.toInt(), 0xFFFFC46B.toInt(),
+        Color(0xFFFFFFFF), Color(0xFFFF7AC6), 0xFF35D6C8.toInt(), 0xFFFFC46B.toInt(),
         0xFF7C5CFF.toInt(), 0xFF66E27A.toInt(), 0xFFFF6B81.toInt()
     )
     val viewRef = remember { arrayOfNulls<SketchView>(1) }
@@ -237,6 +237,6 @@ private fun PillButton(label: String, onClick: () -> Unit) {
             .clickable { onClick() }
             .padding(horizontal = 18.dp, vertical = 10.dp)
     ) {
-        Text(label, color = Color.White, fontSize = 13.sp)
+        Text(label, color = Color(0xFFFFFFFF), fontSize = 13.sp)
     }
 }
