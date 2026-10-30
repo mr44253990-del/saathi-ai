@@ -386,6 +386,10 @@ private fun JimiApp(
                 onOpenSettings = { screen = "settings" },
                 onOpenMemory = { screen = "memory" },
                 onOpenDraw = { screen = "draw" },
+                onNewChat = {
+                    com.saathi.ai.data.ChatStore(context).newChat()
+                    SessionHub.update { it.copy(userText = "", modelText = "", lastTool = "", bubbleMsg = "", error = null) }
+                },
                 onMinimize = onMinimize
             )
         }

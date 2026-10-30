@@ -143,6 +143,8 @@ class LiveSessionService : Service(), LiveClient.Listener {
         syncMic()
     }
 
+    private var currentChatId: String? = null
+
     override fun onAudio(pcm: ByteArray) {
         player?.enqueue(pcm)
         SessionHub.update { st ->
@@ -163,6 +165,17 @@ class LiveSessionService : Service(), LiveClient.Listener {
 
     override fun onTurnComplete() {
         player?.flush()
+
+        // Persist the exchange before clearing it — this is what fills the chat
+        // history screen and what "নতুন চ্যাট" starts fresh from.
+        val st = SessionHub.state.value
+        runCatching {
+            val store = com.saathi.ai.data.ChatStore(this)
+            val id = currentChatId ?: store.newChat().id.also { currentChatId = it }
+            if (st.userText.isNotBlank()) store.append(id, "user", st.userText)
+            if (st.modelText.isNotBlank()) store.append(id, "assistant", st.modelText)
+        }
+
         SessionHub.update { it.copy(phase = Phase.LISTENING, userText = "", modelText = "", level = 0f) }
         updateNotification(getString(R.string.status_listening))
     }

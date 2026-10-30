@@ -385,4 +385,12 @@ object SaathiIcons {
             close()
         }
     }
+
+    val Add: ImageVector by lazy {
+        icon("add") {
+            moveTo(11.0f, 3.0f); lineTo(13.0f, 3.0f); lineTo(13.0f, 11.0f); lineTo(21.0f, 11.0f)
+            lineTo(21.0f, 13.0f); lineTo(13.0f, 13.0f); lineTo(13.0f, 21.0f); lineTo(11.0f, 21.0f)
+            lineTo(11.0f, 13.0f); lineTo(3.0f, 13.0f); lineTo(3.0f, 11.0f); lineTo(11.0f, 11.0f); close()
+        }
+    }
 }
