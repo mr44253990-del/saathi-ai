@@ -181,7 +181,7 @@ fun DrawingScreen(onBack: () -> Unit, onShare: (Bitmap) -> Unit) {
                 AndroidView(
                     factory = { ctx ->
                         SketchView(ctx).also { v ->
-                            v.inkColor = palette[colorIndex]
+                            v.inkColor = paletteArgb[colorIndex]
                             v.inkWidth = thick
                             v.setOnTouchListener { _, e ->
                                 when (e.action) {
@@ -195,7 +195,7 @@ fun DrawingScreen(onBack: () -> Unit, onShare: (Bitmap) -> Unit) {
                         }
                     },
                     update = { v ->
-                        v.inkColor = palette[colorIndex]
+                        v.inkColor = paletteArgb[colorIndex]
                         v.inkWidth = thick
                     },
                     modifier = Modifier.fillMaxSize()
@@ -205,7 +205,7 @@ fun DrawingScreen(onBack: () -> Unit, onShare: (Bitmap) -> Unit) {
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                palette.forEachIndexed { i, c ->
+                paletteArgb.forEachIndexed { i, c ->
                     Box(
                         Modifier
                             .width(26.dp)
