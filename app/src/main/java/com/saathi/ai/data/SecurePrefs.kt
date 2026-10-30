@@ -1,6 +1,7 @@
 package com.saathi.ai.data
 
 import android.content.Context
+import com.saathi.ai.live.ToolRegistryGuide
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -117,7 +118,8 @@ class SecurePrefs(private val contextRef: Context) {
             else -> "\n\nReply in whatever language the user is speaking."
         }
         val memoryRule = store.promptBlock()
-        return base + langRule + memoryRule
+        val guidesRule = "\n\n" + ToolRegistryGuide.TEXT
+        return base + langRule + guidesRule + memoryRule
     }
 
     companion object {

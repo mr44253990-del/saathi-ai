@@ -357,6 +357,13 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 ToggleRow(
+                    title = "অটোপাইলট (নিজে কাজ শেষ করবে)",
+                    subtitle = "লম্বা কাজে Jimi নিজেই ধাপে ধাপে শেষ করবে, বারবার জিজ্ঞেস করবে না",
+                    checked = prefs.autopilotEnabled,
+                    onChange = { prefs.autopilotEnabled = it }
+                )
+                Spacer(Modifier.height(10.dp))
+                ToggleRow(
                     title = "Google Search গ্রাউন্ডিং",
                     subtitle = "Jimi দরকারমতো লাইভ তথ্য খুঁজে উত্তর দিতে পারবে",
                     checked = searchGrounding,
