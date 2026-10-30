@@ -2,7 +2,7 @@ package com.saathi.ai.access
 
 import android.Manifest
 import android.accessibilityservice.AccessibilityService
-import android.app.AlarmClock
+import android.provider.AlarmClock
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
