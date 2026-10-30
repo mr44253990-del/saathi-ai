@@ -27,6 +27,8 @@ import com.saathi.ai.live.SessionHub
  */
 class JimiVoiceInteractionService : VoiceInteractionService() {
 
+    private val TAG = "JimiAssistant"
+
     override fun onReady() {
         super.onReady()
         Log.i(TAG, "voice interaction ready")
@@ -80,15 +82,9 @@ object AssistantSetup {
         return false
     }
 
-    fun openQuickSettingsGuide(context: Context): Boolean = try {
-        // Best-effort: many ROMs ignore this, but nothing else can be done in-app.
-        context.startActivity(
-            Intent(android.provider.Settings.ACTION_QUICK_SETTINGS_SETTINGS)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-        true
-    } catch (t: Throwable) {
-        openAssistantSettings(context)
+    fun openQuickSettingsGuide(context: Context): Boolean {
+        // Most ROMs have no public intent for editing the tile list; fall back.
+        return openAssistantSettings(context)
     }
 
     fun isOurActivityDefault(context: Context): Boolean {
