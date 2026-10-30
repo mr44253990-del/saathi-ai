@@ -15,36 +15,34 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import com.saathi.ai.live.Phase
-import com.saathi.ai.ui.theme.Aqua
-import com.saathi.ai.ui.theme.Pink
-import com.saathi.ai.ui.theme.Violet
-import com.saathi.ai.ui.theme.VioletSoft
-import kotlin.math.PI
-import kotlin.math.abs
+import com.saathi.ai.ui.theme.LocalJimi
+import com.saathi.ai.ui.theme.OrbStyle
+import com.saathi.ai.ui.theme.jimi
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * JIMI's core — the whole visual identity of the assistant.
+ * The Jimi orb.
  *
- * Layers, from back to front:
- *  1. atmospheric bloom
- *  2. two counter-rotating sweep rings
- *  3. a 96-bar radial spectrum that reacts to the real microphone level
- *  4. a liquid-wave body whose edges ripple with the voice
- *  5. a bright nucleus + specular highlight
- *  6. orbiting "satellite" particles while Jimi is thinking/acting
+ * Layers (back → front):
+ *   1. bloom haze
+ *   2. two counter-rotating sweep rings with a comet tail
+ *   3. a 96-bar radial spectrum that reads the live mic/voice level
+ *   4. three liquid wave bodies (sine sheets clipped to a circle)
+ *   5. a glass nucleus with a specular highlight
+ *   6. satellites that orbit only while Jimi is working
  *
- * Every number below is driven by [phase] (session state) and [level]
- * (RMS of the mic / speaker), so the visualiser is genuinely reactive, not a
- * decorative loop.
+ * Colours come from the active theme, so every one of the 12 themes gets a
+ * genuinely different orb — not just a recoloured one.
  */
 @Composable
 fun JimiOrb(
@@ -52,198 +50,266 @@ fun JimiOrb(
     level: Float,
     modifier: Modifier = Modifier
 ) {
-    val t = rememberInfiniteTransition(label = "jimi")
-    val spin by t.animateFloat(
+    val spec = LocalJimi.current
+    val p = jimi
+
+    val transition = rememberInfiniteTransition(label = "orb")
+
+    val spin by transition.animateFloat(
         0f, 360f,
-        infiniteRepeatable(
-            tween(
-                when (phase) {
-                    Phase.SPEAKING -> 2600
-                    Phase.THINKING -> 1700
-                    Phase.RECONNECTING -> 4200
-                    else -> 7200
-                }, easing = LinearEasing
-            ),
-            RepeatMode.Restart
-        ), label = "spin"
+        infiniteRepeatable(tween(14000, easing = LinearEasing)),
+        label = "spin"
     )
-    val counter by t.animateFloat(
-        360f, 0f,
-        infiniteRepeatable(tween(13000, easing = LinearEasing), RepeatMode.Restart),
-        label = "counter"
+    val spinBack by transition.animateFloat(
+        0f, -360f,
+        infiniteRepeatable(tween(22000, easing = LinearEasing)),
+        label = "spinBack"
     )
-    val breathe by t.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(2800, easing = LinearEasing), RepeatMode.Reverse),
+    val breathe by transition.animateFloat(
+        0.96f, 1.04f,
+        infiniteRepeatable(tween(2600, easing = LinearEasing), RepeatMode.Reverse),
         label = "breathe"
     )
-    val shimmer by t.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(4200, easing = LinearEasing), RepeatMode.Restart),
-        label = "shimmer"
+    val wave by transition.animateFloat(
+        0f, 6.2831f,
+        infiniteRepeatable(tween(5200, easing = LinearEasing)),
+        label = "wave"
     )
 
-    val active = phase == Phase.LISTENING || phase == Phase.SPEAKING || phase == Phase.THINKING
-    val energy = if (active) level.coerceIn(0f, 1f) else 0f
-    val busy = phase == Phase.THINKING || phase == Phase.RECONNECTING
-
-    val c1 = when (phase) {
-        Phase.ERROR -> Color(0xFFFF5D73)
-        Phase.ENDED -> Color(0xFF475069)
-        Phase.RECONNECTING -> Color(0xFF6C8CFF)
-        Phase.SPEAKING -> Pink
-        Phase.THINKING -> VioletSoft
-        else -> Violet
+    val mood = when (phase) {
+        Phase.LISTENING -> 1f
+        Phase.SPEAKING -> 1f
+        Phase.THINKING -> 0.72f
+        Phase.CONNECTING, Phase.RECONNECTING -> 0.5f
+        Phase.ERROR -> 0.22f
+        else -> 0.45f
     }
-    val c2 = when (phase) {
-        Phase.SPEAKING -> Color(0xFF9B6BFF)
-        Phase.THINKING, Phase.LISTENING -> Aqua
-        Phase.RECONNECTING -> Aqua
-        else -> Color(0xFF2B3470)
-    }
-    val c3 = if (phase == Phase.SPEAKING) Aqua else Pink
+    val amp = (level.coerceIn(0f, 1f) * 0.75f + 0.25f) * mood
 
-    // Stable pseudo-random satellite offsets
-    val seeds = remember { List(9) { i -> (i * 37 % 100) / 100f } }
-
-    Box(modifier = modifier) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+    Box(modifier) {
+        Canvas(Modifier.fillMaxSize()) {
             val cx = size.width / 2f
             val cy = size.height / 2f
-            val base = size.minDimension * 0.27f
-            val pulse = base * (1f + 0.045f * breathe + 0.22f * energy)
-            val minDim = size.minDimension
+            val r = (size.minDimension / 2f) * 0.92f
 
-            // 1 — atmospheric bloom
-            drawCircle(
-                brush = Brush.radialGradient(
-                    listOf(
-                        c1.copy(alpha = 0.26f + 0.3f * energy),
-                        c2.copy(alpha = 0.10f + 0.12f * energy),
-                        Color.Transparent
-                    ),
-                    center = Offset(cx, cy),
-                    radius = pulse * 2.35f
-                ),
-                radius = pulse * 2.35f,
-                center = Offset(cx, cy)
-            )
-
-            // 2 — counter-rotating sweep rings
-            rotate(spin, Offset(cx, cy)) {
-                drawArc(
-                    brush = Brush.sweepGradient(
-                        listOf(
-                            c1.copy(alpha = 0.95f), c2.copy(alpha = 0.75f),
-                            Color.Transparent, c1.copy(alpha = 0.95f)
-                        ),
-                        center = Offset(cx, cy)
-                    ),
-                    startAngle = 0f, sweepAngle = 250f, useCenter = false,
-                    topLeft = Offset(cx - pulse * 1.38f, cy - pulse * 1.38f),
-                    size = Size(pulse * 2.76f, pulse * 2.76f),
-                    style = Stroke(width = minDim * 0.011f, cap = StrokeCap.Round)
-                )
-            }
-            rotate(counter, Offset(cx, cy)) {
-                drawArc(
-                    brush = Brush.sweepGradient(
-                        listOf(
-                            c3.copy(alpha = 0.8f), Color.Transparent,
-                            c2.copy(alpha = 0.6f), c3.copy(alpha = 0.8f)
-                        ),
-                        center = Offset(cx, cy)
-                    ),
-                    startAngle = 30f, sweepAngle = 170f, useCenter = false,
-                    topLeft = Offset(cx - pulse * 1.66f, cy - pulse * 1.66f),
-                    size = Size(pulse * 3.32f, pulse * 3.32f),
-                    style = Stroke(width = minDim * 0.005f, cap = StrokeCap.Round)
-                )
-            }
-
-            // 3 — radial spectrum (mirrors the real audio energy)
-            val bars = 96
-            for (i in 0 until bars) {
-                val angle = (i.toFloat() / bars) * 2f * PI
-                val sway = abs(sin(i * 0.55f + spin * 0.02f))
-                val gate = if (active) (0.25f + 0.75f * sway) else 0.18f
-                val len = pulse * (0.07f + (0.55f * energy + 0.06f) * gate)
-                val r0 = pulse * 1.04f
-                val x0 = cx + (r0 * cos(angle)).toFloat()
-                val y0 = cy + (r0 * sin(angle)).toFloat()
-                val x1 = cx + ((r0 + len) * cos(angle)).toFloat()
-                val y1 = cy + ((r0 + len) * sin(angle)).toFloat()
-                val a = (0.08f + 0.62f * energy).coerceIn(0.04f, 0.8f)
-                drawLine(
-                    color = when {
-                        i % 5 == 0 -> Color.White.copy(alpha = a)
-                        i % 2 == 0 -> c2.copy(alpha = a)
-                        else -> c1.copy(alpha = a)
-                    },
-                    start = Offset(x0, y0), end = Offset(x1, y1),
-                    strokeWidth = minDim * 0.007f, cap = StrokeCap.Round
-                )
-            }
-
-            // 4 — liquid wave body (3 offset waves = organic edge)
-            val waves = 3
-            for (w in 0 until waves) {
-                val path = Path()
-                val r = pulse * (1f + 0.05f * w) * (1f + 0.05f * energy)
-                val steps = 90
-                val amp = (minDim * 0.012f) + minDim * 0.022f * energy
-                for (s in 0..steps) {
-                    val ang = (s.toFloat() / steps) * 2f * PI
-                    val wob = sin(ang * (3f + w) + spin * 0.035f + w * 1.7f) *
-                        cos(ang * 2f + shimmer * 6.28f) * amp
-                    val rr = r + wob
-                    val x = cx + (rr * cos(ang)).toFloat()
-                    val y = cy + (rr * sin(ang)).toFloat()
-                    if (s == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                }
-                path.close()
-                drawPath(
-                    path = path,
-                    brush = Brush.radialGradient(
-                        colors = when (w) {
-                            0 -> listOf(Color.White.copy(alpha = 0.92f), c1.copy(alpha = 0.92f), c2.copy(alpha = 0.85f), Color(0xFF101438))
-                            else -> listOf(c1.copy(alpha = 0.16f), c2.copy(alpha = 0.06f), Color.Transparent)
-                        },
-                        center = Offset(cx - pulse * 0.26f, cy - pulse * 0.3f),
-                        radius = r * 1.5f
-                    )
-                )
-            }
-
-            // 5 — nucleus + specular
-            drawCircle(
-                brush = Brush.radialGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.95f),
-                        c1.copy(alpha = 0.85f),
-                        Color.Transparent
-                    ),
-                    center = Offset(cx - pulse * 0.32f, cy - pulse * 0.36f),
-                    radius = pulse * 0.7f
-                ),
-                radius = pulse * 0.7f,
-                center = Offset(cx - pulse * 0.32f, cy - pulse * 0.36f)
-            )
-
-            // 6 — satellites while Jimi is working
-            if (busy) {
-                seeds.forEachIndexed { i, s ->
-                    val ang = (i / seeds.size.toFloat()) * 2f * PI + spin * 0.02f
-                    val rad = pulse * (1.55f + 0.18f * sin(shimmer * 6.28f + s * 6f))
-                    val x = cx + (rad * cos(ang)).toFloat()
-                    val y = cy + (rad * sin(ang)).toFloat()
-                    drawCircle(
-                        color = (if (i % 2 == 0) Aqua else c3).copy(alpha = 0.55f + 0.35f * abs(sin(shimmer * 6.28f + i))),
-                        radius = minDim * (0.006f + 0.004f * s),
-                        center = Offset(x, y)
-                    )
-                }
+            drawBloom(cx, cy, r, p.glowA, p.glowB, amp, breathe)
+            drawSweeps(cx, cy, r, p, spin, spinBack, mood)
+            drawSpectrum(cx, cy, r, p, amp, level, spin)
+            drawCore(cx, cy, r * 0.72f, p, breathe, wave, amp, phase)
+            drawSpecular(cx, cy, r * 0.72f, p)
+            if (spec.orbStyle == OrbStyle.PRISM || spec.orbStyle == OrbStyle.NEBULA) {
+                drawSatellites(cx, cy, r, p, spin, mood)
             }
         }
+    }
+}
+
+private fun DrawScope.drawBloom(
+    cx: Float, cy: Float, r: Float,
+    glowA: Color, glowB: Color,
+    amp: Float, breathe: Float
+) {
+    val radius = r * (1.15f + 0.08f * breathe)
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to glowA.copy(alpha = 0.40f * amp + 0.10f),
+            0.45f to glowB.copy(alpha = 0.18f * amp),
+            1f to Color.Transparent,
+            center = Offset(cx, cy),
+            radius = radius
+        ),
+        radius = radius,
+        center = Offset(cx, cy)
+    )
+}
+
+private fun DrawScope.drawSweeps(
+    cx: Float, cy: Float, r: Float,
+    p: com.saathi.ai.ui.theme.JimiPalette,
+    spin: Float, spinBack: Float, mood: Float
+) {
+    // outer comet ring
+    rotate(spin, Offset(cx, cy)) {
+        drawArc(
+            brush = Brush.sweepGradient(
+                listOf(
+                    Color.Transparent,
+                    p.secondary.copy(alpha = 0.0f),
+                    p.secondary.copy(alpha = 0.85f * mood + 0.1f),
+                    p.primary.copy(alpha = 0.95f * mood + 0.05f),
+                    Color.Transparent
+                ),
+                center = Offset(cx, cy)
+            ),
+            startAngle = 0f,
+            sweepAngle = 360f,
+            useCenter = false,
+            topLeft = Offset(cx - r, cy - r),
+            size = Size(2 * r, 2 * r),
+            style = Stroke(width = r * 0.055f)
+        )
+    }
+    // inner counter ring
+    rotate(spinBack, Offset(cx, cy)) {
+        drawArc(
+            brush = Brush.sweepGradient(
+                listOf(
+                    Color.Transparent,
+                    p.accent.copy(alpha = 0.7f * mood + 0.1f),
+                    Color.Transparent
+                ),
+                center = Offset(cx, cy)
+            ),
+            startAngle = 0f,
+            sweepAngle = 360f,
+            useCenter = false,
+            topLeft = Offset(cx - r * 0.84f, cy - r * 0.84f),
+            size = Size(r * 1.68f, r * 1.68f),
+            style = Stroke(width = r * 0.03f)
+        )
+    }
+}
+
+private fun DrawScope.drawSpectrum(
+    cx: Float, cy: Float, r: Float,
+    p: com.saathi.ai.ui.theme.JimiPalette,
+    amp: Float, level: Float, spin: Float
+) {
+    val bars = 96
+    val base = r * 0.80f
+    for (i in 0 until bars) {
+        val t = i.toFloat() / bars
+        val ang = t * 6.2831f
+        // pseudo-spectrum: deterministic per-index noise shaped by the live level
+        val noise = (sin(i * 1.7f + spin * 0.02f) * 0.5f + 0.5f) *
+            (sin(i * 0.37f) * 0.5f + 0.5f)
+        val h = r * (0.035f + 0.20f * amp * noise + 0.05f * level * noise)
+        val sx = cx + cos(ang) * base
+        val sy = cy + sin(ang) * base
+        val ex = cx + cos(ang) * (base + h)
+        val ey = cy + sin(ang) * (base + h)
+        val c = if (t < 0.5f) p.secondary else p.primary
+        drawLine(
+            color = c.copy(alpha = 0.55f * amp + 0.08f),
+            start = Offset(sx, sy),
+            end = Offset(ex, ey),
+            strokeWidth = r * 0.012f
+        )
+    }
+}
+
+private fun DrawScope.drawCore(
+    cx: Float, cy: Float, r: Float,
+    p: com.saathi.ai.ui.theme.JimiPalette,
+    breathe: Float, wave: Float, amp: Float, phase: Phase
+) {
+    // liquid body clipped to a circle, built from three sine sheets
+    val path = Path()
+    val steps = 64
+    val top = cy - r
+    path.moveTo(cx - r, cy + r * 0.1f)
+    for (i in 0..steps) {
+        val x = cx - r + (2 * r) * (i.toFloat() / steps)
+        val y = top + r * 0.55f +
+            sin((i.toFloat() / steps) * 6.2831f * 1.4f + wave) * r * 0.10f * amp +
+            sin((i.toFloat() / steps) * 6.2831f * 2.7f - wave * 0.7f) * r * 0.06f * amp
+        path.lineTo(x, y)
+    }
+    path.lineTo(cx + r, cy + r)
+    path.lineTo(cx - r, cy + r)
+    path.close()
+
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to p.bgMid,
+            1f to p.bgTop,
+            center = Offset(cx - r * 0.2f, cy - r * 0.3f),
+            radius = r * 1.7f
+        ),
+        radius = r * breathe,
+        center = Offset(cx, cy)
+    )
+
+    drawCircle(
+        brush = Brush.verticalGradient(
+            listOf(
+                p.secondary.copy(alpha = 0.25f + 0.3f * amp),
+                p.primary.copy(alpha = 0.55f + 0.3f * amp),
+                p.accent.copy(alpha = 0.35f + 0.3f * amp)
+            ),
+            startY = top,
+            endY = cy + r
+        ),
+        radius = r * breathe,
+        center = Offset(cx, cy)
+    )
+
+    // clip the liquid sheet into the nucleus by drawing it scaled a touch smaller
+    scale(0.99f, 0.99f, Offset(cx, cy)) {
+        drawPath(
+            path = path,
+            brush = Brush.verticalGradient(
+                listOf(
+                    p.accent.copy(alpha = 0.55f * amp + 0.15f),
+                    p.primary.copy(alpha = 0.75f * amp + 0.2f)
+                ),
+                startY = top,
+                endY = cy + r
+            )
+        )
+    }
+
+    // rim light
+    drawCircle(
+        color = Color.White.copy(alpha = 0.10f + 0.12f * amp),
+        radius = r * breathe,
+        center = Offset(cx, cy),
+        style = Stroke(width = r * 0.02f)
+    )
+
+    if (phase == Phase.ERROR) {
+        drawCircle(
+            color = Color(0xFFFF6B81).copy(alpha = 0.30f),
+            radius = r,
+            center = Offset(cx, cy),
+            blendMode = BlendMode.Screen
+        )
+    }
+}
+
+private fun DrawScope.drawSpecular(
+    cx: Float, cy: Float, r: Float,
+    p: com.saathi.ai.ui.theme.JimiPalette
+) {
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to Color.White.copy(alpha = 0.55f),
+            1f to Color.Transparent,
+            center = Offset(cx - r * 0.32f, cy - r * 0.38f),
+            radius = r * 0.55f
+        ),
+        radius = r * 0.55f,
+        center = Offset(cx - r * 0.32f, cy - r * 0.38f)
+    )
+}
+
+private fun DrawScope.drawSatellites(
+    cx: Float, cy: Float, r: Float,
+    p: com.saathi.ai.ui.theme.JimiPalette,
+    spin: Float, mood: Float
+) {
+    if (mood < 0.6f) return
+    val count = 9
+    for (i in 0 until count) {
+        val a = (spin * 1.4f + i * (360f / count)) * (3.14159f / 180f)
+        val orbit = r * (1.02f + 0.05f * sin(a * 2))
+        val x = cx + cos(a) * orbit
+        val y = cy + sin(a) * orbit
+        val radius = r * (0.012f + 0.006f * (i % 3))
+        drawCircle(
+            color = (if (i % 2 == 0) p.accent else p.secondary).copy(alpha = 0.85f),
+            radius = radius,
+            center = Offset(x, y)
+        )
     }
 }

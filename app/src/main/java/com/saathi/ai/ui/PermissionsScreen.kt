@@ -148,9 +148,9 @@ fun PermissionsScreen(onDone: () -> Unit) {
         ) {
             Spacer(Modifier.height(18.dp))
 
-            Text("স্বাগতম 👋", fontSize = 13.sp, color = Aqua, fontWeight = FontWeight.SemiBold)
+            Text("স্বাগতম 👋", fontSize = 13.sp, color = com.saathi.ai.ui.theme.jimi.secondary, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
-            Text("Jimi-কে সব ক্ষমতা দাও", fontSize = 29.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text("Jimi-কে সব ক্ষমতা দাও", fontSize = 29.sp, fontWeight = FontWeight.Bold, color = com.saathi.ai.ui.theme.jimi.textPrimary)
             Spacer(Modifier.height(10.dp))
             Text(
                 "Jimi কথা বলে, স্ক্রিন দেখে, টাচ করে, কল দেয়, মেসেজ পাঠায় — সব কিছুর জন্য এই অনুমতিগুলো একবারই দিতে হবে।",
@@ -199,6 +199,22 @@ fun PermissionsScreen(onDone: () -> Unit) {
                     }
                 )
             }
+
+            Spacer(Modifier.height(10.dp))
+            SpecialRow(
+                title = "Digital Assistant + Quick Settings",
+                desc = "হোম বাটন চেপে ধরে বা Quick Settings টাইল থেকে Jimi ডাকো",
+                enabled = accessibilityOn || overlayOn,
+                accent = com.saathi.ai.ui.theme.jimi.accent,
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+                }
+            )
 
             Spacer(Modifier.height(22.dp))
 

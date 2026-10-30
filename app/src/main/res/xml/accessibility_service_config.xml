@@ -1,10 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Deliberately conservative.
+
+  * No android:settingsActivity — pointing that at the main launcher activity is a
+    documented cause of Android flagging the service as "malfunctioning", because
+    the framework expects an in-service preference screen.
+  * flagIncludeNotImportantViews and flagRetrieveInteractiveWindows are dropped:
+    they explode the event stream on modern ROMs (MIUI/HyperOS especially) and
+    the watchdog then disables the service.
+  * Events stay on window-state + window-content, which is all Jimi needs.
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeAllMask"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagReportViewIds|flagIncludeNotImportantViews"
+    android:accessibilityFlags="flagDefault|flagReportViewIds"
     android:canPerformGestures="true"
     android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_description"
-    android:notificationTimeout="100"
-    android:settingsActivity="com.saathi.ai.MainActivity" />
+    android:notificationTimeout="180" />

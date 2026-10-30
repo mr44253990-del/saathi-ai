@@ -2,8 +2,15 @@ package com.saathi.ai.bubble
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.RadialGradient
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
@@ -13,128 +20,102 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import com.saathi.ai.live.Phase
 import com.saathi.ai.live.SessionHub
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
+import kotlin.math.hypot
+import kotlin.math.min
 
 /**
- * The small floating JIMI orb. It sits above every other app, shows what the
- * assistant is saying in a compact bubble, and taps back into the full UI.
+ * The floating JIMI orb.
  *
- * Implemented with plain views (no Compose in the overlay window) so it works on
- * every API level we support and never fights with the window manager.
+ * Design goals that the first version missed:
+ *  • it has to look like the app, not like a debug circle — same palette, same glow
+ *  • it has to *tell* you what is happening — a live caption pill that grows out of
+ *    the orb, with the current action in Bangla
+ *  • it has to be pleasant to grab — the pill expands on drag, snaps to the nearest
+ *    edge, remembers where you left it, and never blocks a big part of the screen
  */
-class JimiBubble(
-    private val context: Context,
-    private val onTap: () -> Unit,
-    private val onLongPress: () -> Unit
-) {
+class JimiBubble(private val context: Context) {
 
-    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val handler = Handler(Looper.getMainLooper())
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private var root: FrameLayout? = null
-    private var params: WindowManager.LayoutParams? = null
-    private var captionView: TextView? = null
-    private var captionRoot: View? = null
+    private var orb: OrbView? = null
+    private var caption: TextView? = null
+    private var pill: LinearLayout? = null
 
-    var isShowing: Boolean = false
-        private set
+    private var params: WindowManager.LayoutParams? = null
+    private var captionParams: WindowManager.LayoutParams? = null
+
+    private var lastCaption = ""
+    private var collapseRunnable: Runnable? = null
+
+    val isShowing: Boolean get() = root != null
+
+    // ---------------------------------------------------------------- lifecycle
 
     @SuppressLint("ClickableViewAccessibility")
     fun show() {
         if (isShowing) return
-        val size = dp(62)
+        val palette = BubblePalette.from(context)
 
-        val container = FrameLayout(context).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#1B1035"))
-                setStroke(dp(2), Color.parseColor("#8B5CF6"))
-            }
-            elevation = dp(8).toFloat()
-        }
-
-        val orb = View(context).apply {
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.parseColor("#A78BFA"), Color.parseColor("#22D3EE"))
-            ).apply { shape = GradientDrawable.OVAL }
-        }
-        val orbSize = dp(38)
-        container.addView(
-            orb,
-            FrameLayout.LayoutParams(orbSize, orbSize, Gravity.CENTER)
-        )
-
-        val holdRing = View(context).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RING
-                setStroke(dp(2), Color.parseColor("#22D3EE"))
-            }
-            visibility = View.GONE
-        }
-        container.addView(holdRing, FrameLayout.LayoutParams(dp(52), dp(52), Gravity.CENTER))
-
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
+        val frame = FrameLayout(context)
+        val orbView = OrbView(context, palette)
+        val size = dp(64)
+        frame.addView(orbView, FrameLayout.LayoutParams(size, size))
 
         val lp = WindowManager.LayoutParams(
-            size,
-            size,
-            type,
+            size, size,
+            overlayType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = context.resources.displayMetrics.widthPixels - size - dp(12)
-            y = context.resources.displayMetrics.heightPixels / 2 - size / 2
+            x = BubblePalette.from(context).savedX
+            y = BubblePalette.from(context).savedY
         }
 
-        var downX = 0f
-        var downY = 0f
         var startX = 0
         var startY = 0
+        var touchX = 0f
+        var touchY = 0f
         var moved = false
-        var downAt = 0L
 
-        container.setOnTouchListener { _, event ->
+        frame.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    downX = event.rawX
-                    downY = event.rawY
                     startX = lp.x
                     startY = lp.y
+                    touchX = event.rawX
+                    touchY = event.rawY
                     moved = false
-                    downAt = System.currentTimeMillis()
-                    container.animate().scaleX(1.12f).scaleY(1.12f).setDuration(90).start()
+                    orbView.pressed = true
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - downX
-                    val dy = event.rawY - downY
-                    if (kotlin.math.abs(dx) > dp(6) || kotlin.math.abs(dy) > dp(6)) moved = true
-                    lp.x = startX + dx.toInt()
-                    lp.y = startY + dy.toInt()
-                    runCatching { windowManager.updateViewLayout(container, lp) }
+                    val dx = event.rawX - touchX
+                    val dy = event.rawY - touchY
+                    if (hypot(dx, dy) > 12f) moved = true
+                    if (moved) {
+                        lp.x = (startX + dx).toInt()
+                        lp.y = (startY + dy).toInt()
+                        runCatching { wm.updateViewLayout(frame, lp) }
+                    }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    container.animate().scaleX(1f).scaleY(1f).setDuration(90).start()
-                    if (!moved) {
-                        if (System.currentTimeMillis() - downAt > 650) onLongPress() else onTap()
+                    orbView.pressed = false
+                    if (moved) {
+                        snapToEdge(lp, size)
+                        runCatching { wm.updateViewLayout(frame, lp) }
+                        BubblePalette.from(context).savePosition(lp.x, lp.y)
+                    } else {
+                        onClick()
                     }
                     true
                 }
@@ -143,121 +124,391 @@ class JimiBubble(
         }
 
         runCatching {
-            windowManager.addView(container, lp)
-            root = container
+            wm.addView(frame, lp)
+            root = frame
+            orb = orbView
             params = lp
-            this.captionView = null
-            isShowing = true
-            startRipple(orb, holdRing)
-            observeSession()
+        }
+        startObserving()
+    }
+
+    private fun onClick() {
+        val state = SessionHub.state.value
+        when (state.phase) {
+            Phase.IDLE, Phase.ENDED, Phase.ERROR -> {
+                SessionHub.update { it.copy(phase = Phase.CONNECTING) }
+                runCatching {
+                    val intent = android.content.Intent(
+                        context, com.saathi.ai.capture.LiveSessionService::class.java
+                    )
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
+                }
+                setCaption("Jimi জাগছে…")
+            }
+            else -> openApp()
         }
     }
 
-    /** Shows a compact caption above the bubble — what Jimi is saying/doing. */
+    private fun openApp() {
+        runCatching {
+            context.startActivity(
+                android.content.Intent(context, com.saathi.ai.MainActivity::class.java)
+                    .addFlags(
+                        android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                            android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
+            )
+        }
+    }
+
+    fun hide() {
+        collapseRunnable?.let { handler.removeCallbacks(it) }
+        stopObserving()
+        runCatching { caption?.let { wm.removeView(it) } }
+        runCatching { root?.let { wm.removeView(it) } }
+        caption = null
+        root = null
+        orb = null
+        params = null
+        captionParams = null
+    }
+
+    // ---------------------------------------------------------------- caption
+
+    /** Shows what Jimi is doing, in a compact pill next to the orb. */
     fun setCaption(text: String) {
-        if (!isShowing || text.isBlank()) return
+        val clean = text.trim().take(70)
+        if (clean.isEmpty() || clean == lastCaption) return
+        lastCaption = clean
+
         handler.post {
-            if (captionView == null) createCaption()
-            captionView?.text = text.take(90)
-            captionRoot?.visibility = View.VISIBLE
-            handler.removeCallbacks(hideCaption)
-            handler.postDelayed(hideCaption, 5200)
+            val frame = root ?: return@post
+            val palette = BubblePalette.from(context)
+            if (caption == null) {
+                val tv = TextView(context).apply {
+                    setTextColor(Color.WHITE)
+                    textSize = 11.5f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(dp(14), dp(9), dp(14), dp(9))
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(18).toFloat()
+                        setColor(Color.argb(232, 14, 18, 32))
+                        setStroke(dp(1), Color.argb(90, Color.red(palette.primary), Color.green(palette.primary), Color.blue(palette.primary)))
+                    }
+                }
+                val lp = WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    overlayType(),
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    PixelFormat.TRANSLUCENT
+                ).apply {
+                    gravity = Gravity.TOP or Gravity.START
+                }
+                caption = tv
+                captionParams = lp
+                runCatching { wm.addView(tv, lp) }
+            }
+            caption?.text = clean
+            positionCaption()
+
+            // auto-collapse the text after a while so the screen stays clean
+            collapseRunnable?.let { handler.removeCallbacks(it) }
+            collapseRunnable = Runnable {
+                runCatching {
+                    (caption?.layoutParams as? WindowManager.LayoutParams)?.let {
+                        caption?.alpha = 0f
+                    }
+                }
+            }.also { handler.postDelayed(it, 6000) }
+            caption?.alpha = 1f
         }
     }
 
-    private val hideCaption = Runnable {
-        captionRoot?.visibility = View.GONE
+    private fun positionCaption() {
+        val lp = params ?: return
+        val clp = captionParams ?: return
+        val tv = caption ?: return
+        val orbSize = dp(64)
+        val screenW = context.resources.displayMetrics.widthPixels
+        val onLeft = lp.x < screenW / 2
+        tv.measure(
+            View.MeasureSpec.makeMeasureSpec(screenW - dp(140), View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(dp(120), View.MeasureSpec.AT_MOST)
+        )
+        val w = tv.measuredWidth
+        clp.x = if (onLeft) lp.x + orbSize + dp(6) else lp.x - w - dp(6)
+        clp.y = lp.y + (orbSize - tv.measuredHeight) / 2
+        runCatching { wm.updateViewLayout(tv, clp) }
     }
 
-    private fun createCaption() {
-        val lp = params ?: return
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+    private fun snapToEdge(lp: WindowManager.LayoutParams, size: Int) {
+        val dm = context.resources.displayMetrics
+        val margin = dp(8)
+        lp.x = lp.x.coerceIn(margin, dm.widthPixels - size - margin)
+        lp.y = lp.y.coerceIn(dp(40), dm.heightPixels - size - dp(120))
+        // magnetise horizontally to the nearer edge, keeping the vertical spot
+        lp.x = if (lp.x + size / 2 < dm.widthPixels / 2) dp(10) else dm.widthPixels - size - dp(10)
+        positionCaption()
+    }
+
+    // ---------------------------------------------------------------- session stream
+
+    private var observeJob: kotlinx.coroutines.Job? = null
+    private val scope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main
+    )
+
+    private fun startObserving() {
+        observeJob = scope.launch {
+            SessionHub.state.collect { st ->
+                orb?.phase = st.phase
+                orb?.level = st.level
+
+                val captionText = when {
+                    st.bubbleMsg.isNotBlank() -> st.bubbleMsg
+                    st.lastTool.isNotBlank() -> toolLabel(st.lastTool)
+                    else -> when (st.phase) {
+                        Phase.LISTENING -> "শুনছি…"
+                        Phase.THINKING -> "ভাবছি…"
+                        Phase.SPEAKING -> st.modelText.take(60)
+                        Phase.CONNECTING -> "সংযোগ হচ্ছে…"
+                        Phase.RECONNECTING -> "আবার জোড়া লাগাচ্ছি…"
+                        else -> ""
+                    }
+                }
+                if (captionText.isNotBlank()) setCaption(captionText)
+            }
+        }
+    }
+
+    private fun stopObserving() {
+        observeJob?.cancel()
+        observeJob = null
+    }
+
+    private fun toolLabel(tool: String): String = when (tool) {
+        "open_app" -> "অ্যাপ খুলছি…"
+        "open_url", "open_web" -> "ওয়েবসাইট খুলছি…"
+        "search_youtube", "play_on_youtube", "open_youtube_and_search_play" -> "ইউটিউবে খুঁজছি…"
+        "read_screen" -> "স্ক্রিন পড়ছি…"
+        "screen_tap", "screen_tap_at", "long_press" -> "ট্যাপ করছি…"
+        "screen_scroll" -> "স্ক্রল করছি…"
+        "screen_type" -> "লিখছি…"
+        "screen_zoom" -> "জুম করছি…"
+        "call_number", "call_contact" -> "কল দিচ্ছি…"
+        "send_sms" -> "মেসেজ পাঠাচ্ছি…"
+        "read_recent_sms", "read_call_log", "read_contacts" -> "তথ্য দেখছি…"
+        "open_camera", "take_photo" -> "ক্যামেরা…"
+        "latest_photos" -> "ছবি খুঁজছি…"
+        "upi_pay", "upi_scan" -> "পেমেন্ট স্ক্রিন…"
+        "open_weather" -> "আবহাওয়া দেখছি…"
+        "copy_text", "paste_text", "write_clipboard", "read_clipboard" -> "ক্লিপবোর্ড…"
+        "medicine_reminder" -> "রিমাইন্ডার সেট করছি…"
+        "remember", "recall" -> "মনে রাখছি…"
+        else -> "কাজ করছি…"
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private fun overlayType(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
-        val cap = TextView(context).apply {
-            setTextColor(Color.WHITE)
-            textSize = 12f
-            maxLines = 2
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(16).toFloat()
-                setColor(Color.parseColor("#E6101830"))
-                setStroke(dp(1), Color.parseColor("#447C5CFF"))
-            }
-        }
-        val capLp = WindowManager.LayoutParams(
-            dp(210),
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            type,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = (context.resources.displayMetrics.widthPixels - dp(210) - dp(12)).coerceAtLeast(0)
-            y = (lp.y - dp(58)).coerceAtLeast(0)
-        }
-        runCatching {
-            windowManager.addView(cap, capLp)
-            captionView = cap
-            captionRoot = cap
-        }
-    }
+    private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
 
-    private fun startRipple(orb: View, ring: View) {
-        handler.post(object : Runnable {
-            var grow = true
+    // ---------------------------------------------------------------- the orb itself
+
+    private class OrbView(
+        context: Context,
+        private val palette: BubblePalette
+    ) : View(context) {
+
+        var phase: Phase = Phase.IDLE
+            set(value) {
+                field = value
+                invalidate()
+            }
+
+        var level: Float = 0f
+            set(value) {
+                field = value
+                invalidate()
+            }
+
+        var pressed = false
+            set(value) {
+                field = value
+                invalidate()
+            }
+
+        private val core = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+        private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val bar = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val path = Path()
+        private val oval = RectF()
+        private var t = 0f
+
+        private val ticker = object : Runnable {
             override fun run() {
-                val phase = SessionHub.state.value.phase
-                val speaking = phase == Phase.SPEAKING || phase == Phase.THINKING
-                ring.visibility = if (speaking) View.VISIBLE else View.GONE
-                if (speaking) {
-                    grow = !grow
-                    ring.animate().scaleX(if (grow) 1.35f else 1f).scaleY(if (grow) 1.35f else 1f)
-                        .setDuration(if (phase == Phase.SPEAKING) 420 else 900).start()
-                }
-                handler.postDelayed(this, if (speaking) 460 else 1400)
+                t += 0.055f
+                invalidate()
+                postDelayed(this, 33)
             }
-        })
-    }
+        }
 
-    private fun observeSession() {
-        scope.launch {
-            SessionHub.state.collectLatest { st ->
-                if (st.modelText.isNotBlank()) setCaption(st.modelText)
-                else if (st.lastTool.isNotBlank()) setCaption(toolLabel(st.lastTool))
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            post(ticker)
+        }
+
+        override fun onDetachedFromWindow() {
+            removeCallbacks(ticker)
+            super.onDetachedFromWindow()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            val w = width.toFloat()
+            val h = height.toFloat()
+            val cx = w / 2f
+            val cy = h / 2f
+            val r = min(w, h) / 2f
+            val scale = if (pressed) 0.9f else 1f
+            val mood = when (phase) {
+                Phase.LISTENING -> 1f
+                Phase.SPEAKING -> 1f
+                Phase.THINKING -> 0.6f
+                Phase.CONNECTING -> 0.4f
+                Phase.RECONNECTING -> 0.4f
+                Phase.ERROR -> 0.15f
+                else -> 0.35f
             }
+
+            // outer bloom
+            glow.shader = RadialGradient(
+                cx, cy, r * (1.15f + 0.1f * level),
+                intArrayOf(
+                    alpha(palette.primary, 0.55f * mood + 0.18f),
+                    alpha(palette.secondary, 0.22f * mood),
+                    Color.TRANSPARENT
+                ),
+                floatArrayOf(0.35f, 0.72f, 1f),
+                Shader.TileMode.CLAMP
+            )
+            canvas.drawCircle(cx, cy, r * (1.15f + 0.1f * level), glow)
+
+            // glass body
+            oval.set(cx - r * 0.86f * scale, cy - r * 0.86f * scale, cx + r * 0.86f * scale, cy + r * 0.86f * scale)
+            core.shader = RadialGradient(
+                cx - r * 0.3f, cy - r * 0.35f, r * 1.6f,
+                intArrayOf(
+                    alpha(palette.secondary, 0.95f),
+                    alpha(palette.primary, 0.92f),
+                    alpha(0xFF10152A.toInt(), 0.98f)
+                ),
+                floatArrayOf(0f, 0.55f, 1f),
+                Shader.TileMode.CLAMP
+            )
+            canvas.drawCircle(cx, cy, r * 0.86f * scale, core)
+
+            // audio-reactive ring
+            val ringR = r * (0.94f + level * 0.10f)
+            ring.shader = null
+            ring.strokeWidth = r * 0.10f
+            ring.color = alpha(palette.accent, 0.75f * mood + 0.1f)
+            canvas.drawCircle(cx, cy, ringR, ring)
+
+            // 12 spokes that beat with the voice
+            bar.color = alpha(Color.WHITE, 0.55f)
+            bar.strokeWidth = r * 0.055f
+            bar.strokeCap = Paint.Cap.ROUND
+            val bars = 12
+            for (i in 0 until bars) {
+                val ang = (i.toFloat() / bars) * 6.2831f + t * 0.6f
+                val wobble = 0.55f + 0.45f * kotlin.math.sin(t * 2.2f + i * 0.9f)
+                val len = r * (0.06f + 0.22f * level * wobble * mood)
+                val sx = cx + kotlin.math.cos(ang) * ringR
+                val sy = cy + kotlin.math.sin(ang) * ringR
+                val ex = cx + kotlin.math.cos(ang) * (ringR + len)
+                val ey = cy + kotlin.math.sin(ang) * (ringR + len)
+                canvas.drawLine(sx, sy, ex, ey, bar)
+            }
+
+            // little nucleus highlight
+            core.shader = null
+            core.color = alpha(Color.WHITE, 0.30f + 0.25f * mood)
+            canvas.drawCircle(cx - r * 0.22f, cy - r * 0.24f, r * 0.16f, core)
+
+            // drawing a subtle smile keeps it friendly at rest
+            if (mood < 0.5f) {
+                val smile = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = r * 0.07f
+                    strokeCap = Paint.Cap.ROUND
+                    color = alpha(Color.WHITE, 0.85f)
+                }
+                path.reset()
+                path.moveTo(cx - r * 0.26f, cy + r * 0.10f)
+                path.quadTo(cx, cy + r * 0.40f, cx + r * 0.26f, cy + r * 0.10f)
+                canvas.drawPath(path, smile)
+            }
+        }
+
+        private fun alpha(color: Int, a: Float): Int {
+            val al = (a.coerceIn(0f, 1f) * 255).toInt()
+            return Color.argb(al, Color.red(color), Color.green(color), Color.blue(color))
         }
     }
 
-    private fun toolLabel(tool: String): String = when (tool) {
-        "open_app" -> "অ্যাপ খুলছি…"
-        "search_youtube", "play_on_youtube" -> "ইউটিউবে খুঁজছি…"
-        "call_number", "call_contact" -> "কল দিচ্ছি…"
-        "send_sms" -> "মেসেজ পাঠাচ্ছি…"
-        "read_screen" -> "স্ক্রিন পড়ছি…"
-        "screen_tap", "screen_tap_at" -> "ট্যাপ করছি…"
-        "screen_scroll" -> "স্ক্রল করছি…"
-        "take_photo" -> "ক্যামেরা খুলছি…"
-        else -> "কাজ করছি…"
-    }
+    // ---------------------------------------------------------------- palette bridge
 
-    fun hide() {
-        handler.removeCallbacksAndMessages(null)
-        runCatching { scope.cancel() }
-        captionRoot?.let { runCatching { windowManager.removeView(it) } }
-        root?.let { runCatching { windowManager.removeView(it) } }
-        captionRoot = null
-        captionView = null
-        root = null
-        isShowing = false
-    }
+    /** Reads the user's active theme without pulling Compose into the overlay. */
+    class BubblePalette(
+        val primary: Int,
+        val secondary: Int,
+        val accent: Int,
+        val savedX: Int,
+        val savedY: Int
+    ) {
+        var contextRef: Context? = null
 
-    private fun dp(v: Int): Int =
-        (v * context.resources.displayMetrics.density).toInt()
+        fun savePosition(x: Int, y: Int) {
+            contextRef?.getSharedPreferences("jimi_bubble", Context.MODE_PRIVATE)
+                ?.edit()
+                ?.putInt("x", x)
+                ?.putInt("y", y)
+                ?.apply()
+        }
+
+        companion object {
+            fun from(context: Context): BubblePalette {
+                val spec = com.saathi.ai.ui.theme.JimiThemes.get(
+                    com.saathi.ai.data.SecurePrefs(context).themeId
+                )
+                val p = spec.palette
+                val sp = context.getSharedPreferences("jimi_bubble", Context.MODE_PRIVATE)
+                val dm = context.resources.displayMetrics
+                return BubblePalette(
+                    primary = androidx.compose.ui.graphics.toArgb(p.primary),
+                    secondary = androidx.compose.ui.graphics.toArgb(p.secondary),
+                    accent = androidx.compose.ui.graphics.toArgb(p.accent),
+                    savedX = sp.getInt("x", 20),
+                    savedY = sp.getInt("y", (dm.heightPixels * 0.62f).toInt())
+                ).also { it.contextRef = context }
+            }
+        }
+    }
 }

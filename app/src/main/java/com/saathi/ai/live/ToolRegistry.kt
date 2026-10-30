@@ -199,6 +199,105 @@ object ToolRegistry {
             mapOf("limit" to ("NUMBER" to "How many photos"))
         )
 
+
+        // ---- smart / everyday
+        list += fn(
+            "web_search",
+            "Search the web in the browser for any question, price, news, recipe or fact.",
+            mapOf("query" to ("STRING" to "Search text")),
+            listOf("query")
+        )
+        list += fn(
+            "open_weather",
+            "Show today/this week's weather for a place by opening the weather search page.",
+            mapOf("location" to ("STRING" to "City or area; empty for current location"))
+        )
+        list += fn(
+            "map_search",
+            "Search a place, shop, hospital, restaurant or address on Google Maps.",
+            mapOf("query" to ("STRING" to "Place to find")),
+            listOf("query")
+        )
+        list += fn(
+            "play_store_search",
+            "Search the Play Store for an app.",
+            mapOf("query" to ("STRING" to "App name")),
+            listOf("query")
+        )
+        list += fn(
+            "upi_pay",
+            "Open the UPI payment sheet with payee, amount and note pre-filled. NEVER confirms the payment; the user must approve it.",
+            mapOf(
+                "vpa" to ("STRING" to "UPI ID like name@okaxis"),
+                "payee" to ("STRING" to "Payee display name"),
+                "amount" to ("STRING" to "Amount in rupees"),
+                "note" to ("STRING" to "Payment note")
+            ),
+            listOf("vpa")
+        )
+        list += fn("upi_scan", "Open the UPI scanner so the user can pay by QR code.")
+        list += fn(
+            "copy_text",
+            "Copy text to the clipboard so the user can paste it anywhere.",
+            mapOf("text" to ("STRING" to "Text to copy")),
+            listOf("text")
+        )
+        list += fn("paste_text", "Read whatever is currently on the clipboard.")
+        list += fn(
+            "share_text",
+            "Open the Android share sheet with this text (WhatsApp, Telegram, SMS, anything).",
+            mapOf("text" to ("STRING" to "Text to share")),
+            listOf("text")
+        )
+        list += fn(
+            "medicine_reminder",
+            "Set a daily medicine reminder alarm in the clock app.",
+            mapOf(
+                "medicine" to ("STRING" to "Medicine name and dose"),
+                "time" to ("STRING" to "Time like 8:30 am or সকাল ৮টা")
+            ),
+            listOf("medicine", "time")
+        )
+        list += fn("battery_status", "Battery percentage and charging state.")
+        list += fn("time_now", "Current date and time in the user's locale.")
+        list += fn(
+            "find_app",
+            "Work out which installed app matches a name the user said (works for Bangla, English, brand names, even misspelled).",
+            mapOf("name" to ("STRING" to "App name as the user said it")),
+            listOf("name")
+        )
+        list += fn(
+            "deep_link",
+            "Open a specific screen inside a known app (whatsapp, instagram, facebook, tiktok, youtube, telegram, gmail, phonepe, gpay, paytm).",
+            mapOf(
+                "app" to ("STRING" to "App key"),
+                "value" to ("STRING" to "Phone number / username / search text, optional")
+            ),
+            listOf("app")
+        )
+        list += fn(
+            "long_press",
+            "Press and hold an element with this exact on-screen text (for menus, delete, copy options).",
+            mapOf("text" to ("STRING" to "Visible text")),
+            listOf("text")
+        )
+        list += fn(
+            "screen_bounds",
+            "Get the screen coordinates of an element so you can tap it precisely.",
+            mapOf("text" to ("STRING" to "Visible text")),
+            listOf("text")
+        )
+        list += fn(
+            "read_clipboard",
+            "Read the clipboard (what the user last copied)."
+        )
+        list += fn(
+            "write_clipboard",
+            "Put text on the clipboard.",
+            mapOf("text" to ("STRING" to "Text")),
+            listOf("text")
+        )
+
         // ---- memory
         list += fn(
             "remember",
@@ -229,8 +328,18 @@ object ToolRegistry {
         screen_tap_at, screen_scroll, screen_type, screen_zoom, screen_press, current_app,
         call_number, call_contact, send_sms, read_recent_sms, read_call_log, read_contacts,
         toggle_flashlight, set_volume, vibrate, set_alarm, set_timer, device_status,
-        open_settings, open_camera, take_photo, latest_photos, remember, recall.
-        কাজ করার আগে দরকার হলে read_screen দিয়ে স্ক্রিন পড়ো, তারপর কাজ করো।
-        কাজ শেষ হলে ছোট করে জানাও কী করেছ।
+        open_settings, open_camera, take_photo, latest_photos, remember, recall,
+        web_search, open_weather, map_search, play_store_search, upi_pay, upi_scan,
+        copy_text, paste_text, share_text, medicine_reminder, battery_status, time_now,
+        find_app, deep_link, long_press, screen_bounds, read_clipboard, write_clipboard.
+
+        কীভাবে কাজ করবে:
+        • ব্যবহারকারী "একবারে পুরো কাজটা করে দাও" বললে নিজে থেকে ধাপে ধাপে সব ধাপ শেষ করো —
+          প্রতিটা ধাপের পর read_screen দিয়ে দেখো কাজটা হয়েছে কি না, না হলে অন্যভাবে চেষ্টা করো।
+        • নতুন/অচেনা অ্যাপ হলে: find_app → open_app → read_screen → দরকার হলে scroll/tap/type।
+          মনে রাখো কোথায় কী বোতাম ছিল, পরেরবার দ্রুত করো।
+        • "কপি করা টেক্সট পেস্ট করো" হলে read_clipboard → target অ্যাপে type।
+        • টাকা/পেমেন্ট কখনো নিজে confirm করবে না — শুধু স্ক্রিন খুলে দেবে।
+        • কাজ শেষ হলে এক-দুই বাক্যে বলো কী করেছ।
     """
 }

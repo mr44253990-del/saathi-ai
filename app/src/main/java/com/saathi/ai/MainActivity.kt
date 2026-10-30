@@ -21,7 +21,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -42,6 +41,8 @@ import com.saathi.ai.ui.HomeScreen
 import com.saathi.ai.ui.PermissionsScreen
 import com.saathi.ai.ui.SettingsScreen
 import com.saathi.ai.ui.SplashScreen
+import com.saathi.ai.ui.ThemePickerScreen
+import com.saathi.ai.ui.theme.JimiThemes
 import com.saathi.ai.ui.theme.SaathiTheme
 import kotlinx.coroutines.delay
 
@@ -72,19 +73,19 @@ class MainActivity : ComponentActivity() {
         prefs = SecurePrefs(this)
         refreshSpecial()
 
-        // "Hey Jimi" from the hotword service lands here
         if (intent?.getBooleanExtra(HotwordService.EXTRA_WAKE, false) == true) {
-            SessionHub.update { it.copy(phase = Phase.CONNECTING) }
-            LiveSessionService.start(this)
+            wakeUp()
         }
 
         setContent {
-            SaathiTheme {
-                SaathiApp(
+            var themeSpec by remember { mutableStateOf(JimiThemes.get(prefs.themeId)) }
+            SaathiTheme(spec = themeSpec) {
+                JimiApp(
                     prefs = prefs,
                     accessibilityOn = accessibilityOn,
                     bubbleOn = bubbleOn,
                     hotwordOn = hotwordOn,
+                    onThemeChanged = { themeSpec = JimiThemes.get(it) },
                     onStartSession = { startSession() },
                     onEndSession = {
                         stopCamera()
@@ -109,6 +110,7 @@ class MainActivity : ComponentActivity() {
                         if (Settings.canDrawOverlays(this)) {
                             if (bubbleOn) BubbleService.hide(this) else BubbleService.show(this)
                             bubbleOn = !bubbleOn
+                            prefs.bubbleEnabled = bubbleOn
                         } else {
                             openOverlaySettings()
                         }
@@ -127,12 +129,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Invoked for the "Hey Jimi" notification tap / assist gesture / QS tile. */
+    private fun wakeUp() {
+        SessionHub.update { it.copy(phase = Phase.CONNECTING, error = null) }
+        if (hasMic()) {
+            LiveSessionService.start(this)
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.getBooleanExtra(HotwordService.EXTRA_WAKE, false)) {
-            SessionHub.update { it.copy(phase = Phase.CONNECTING) }
-            LiveSessionService.start(this)
+            wakeUp()
         }
     }
 
@@ -151,8 +160,6 @@ class MainActivity : ComponentActivity() {
         hotwordOn = prefs.hotwordEnabled && hasMic()
     }
 
-    // ------------------------------------------------------------------ session
-
     private fun startSession() {
         if (!hasMic()) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 900)
@@ -166,7 +173,6 @@ class MainActivity : ComponentActivity() {
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
 
-    /** Shrinks the app into the floating bubble and keeps the session running. */
     private fun minimizeToBubble() {
         if (!Settings.canDrawOverlays(this)) {
             openOverlaySettings()
@@ -175,19 +181,18 @@ class MainActivity : ComponentActivity() {
         prefs.bubbleEnabled = true
         BubbleService.show(this)
         bubbleOn = true
-        moveTaskToBack(true)
+        // a little delay so the bubble appears before the window animates away
+        window.decorView.postDelayed({ moveTaskToBack(true) }, 120)
     }
 
     private fun openOverlaySettings() {
-        startActivity(
-            Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
+        runCatching {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
     }
-
-    // ------------------------------------------------------------------ camera
 
     private fun startCamera(front: Boolean = true) {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) !=
@@ -234,8 +239,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ------------------------------------------------------------------ screen share
-
     private fun requestScreenCapture() {
         val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         val base = manager.createScreenCaptureIntent()
@@ -257,11 +260,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun SaathiApp(
+private fun JimiApp(
     prefs: SecurePrefs,
     accessibilityOn: Boolean,
     bubbleOn: Boolean,
     hotwordOn: Boolean,
+    onThemeChanged: (String) -> Unit,
     onStartSession: () -> Unit,
     onEndSession: () -> Unit,
     onSetMic: (Boolean) -> Unit,
@@ -279,15 +283,10 @@ private fun SaathiApp(
 
     var screen by remember { mutableStateOf("splash") }
     var configured by remember { mutableStateOf(prefs.isConfigured) }
-
     val state by SessionHub.state.collectAsState()
 
-    DisposableEffect(Unit) {
-        onDispose { SessionHub.reset() }
-    }
-
     LaunchedEffect(Unit) {
-        delay(1200)
+        delay(1400)
         if (!SessionHub.isServiceRunning) {
             SessionHub.update {
                 if (it.phase == Phase.CONNECTING || it.phase == Phase.LISTENING ||
@@ -316,13 +315,23 @@ private fun SaathiApp(
                 screen = "home"
             })
 
+            "themes" -> ThemePickerScreen(
+                current = prefs.themeId,
+                onPick = {
+                    prefs.themeId = it
+                    onThemeChanged(it)
+                },
+                onBack = { screen = "settings" }
+            )
+
             "settings" -> SettingsScreen(
                 prefs = prefs,
                 onBack = {
                     configured = prefs.isConfigured
                     screen = "home"
                 },
-                onSaved = { configured = prefs.isConfigured }
+                onSaved = { configured = prefs.isConfigured },
+                onOpenThemes = { screen = "themes" }
             )
 
             else -> HomeScreen(

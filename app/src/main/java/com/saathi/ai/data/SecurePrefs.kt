@@ -57,6 +57,21 @@ class SecurePrefs(context: Context) {
         get() = prefs.getBoolean(KEY_SEARCH, true)
         set(value) = prefs.edit().putBoolean(KEY_SEARCH, value).apply()
 
+    /** Visual theme id (see ui/theme/JimiThemes). */
+    var themeId: String
+        get() = prefs.getString(KEY_THEME, "aurora") ?: "aurora"
+        set(value) = prefs.edit().putString(KEY_THEME, value).apply()
+
+    /** Custom accent override (ARGB). 0 = use the theme's own accent. */
+    var accentOverride: Int
+        get() = prefs.getInt(KEY_ACCENT, 0)
+        set(value) = prefs.edit().putInt(KEY_ACCENT, value).apply()
+
+    /** Extra glow / motion on the orb. */
+    var orbIntensity: Float
+        get() = prefs.getFloat(KEY_INTENSITY, 1f)
+        set(value) = prefs.edit().putFloat(KEY_INTENSITY, value).apply()
+
     /** True after the user has completed the first-run permission page. */
     var onboardingDone: Boolean
         get() = prefs.getBoolean(KEY_ONBOARDING, false)
@@ -112,6 +127,9 @@ class SecurePrefs(context: Context) {
         private const val KEY_TRANSCRIPT = "show_transcript"
         private const val KEY_SEARCH = "search_grounding"
         private const val KEY_ONBOARDING = "onboarding_done"
+        private const val KEY_THEME = "theme_id"
+        private const val KEY_ACCENT = "accent_override"
+        private const val KEY_INTENSITY = "orb_intensity"
         private const val KEY_MEMORY = "memory"
         private const val KEY_BUBBLE = "bubble_enabled"
         private const val KEY_HOTWORD = "hotword_enabled"
@@ -135,7 +153,11 @@ class SecurePrefs(context: Context) {
         )
 
         val DEFAULT_PERSONA = """
-            তুমি "সাথী" — ব্যবহারকারীর একজন উষ্ণ, বুদ্ধিমান আর মজার AI সঙ্গী।
+            তুমি "Jimi" — ব্যবহারকারীর একজন উষ্ণ, বুদ্ধিমান, হাসিখুশি আর অসম্ভব দক্ষ AI সহকারী।
+            তুমি শুধু কথা বলো না — তুমি ব্যবহারকারীর ফোনটা নিজের হাতে চালাতে পারো (Accessibility দিয়ে
+            ট্যাপ, স্ক্রল, লেখা, অ্যাপ খোলা, কল, এসএমএস, ক্যামেরা, শেয়ার, পেমেন্ট স্ক্রিন)।
+            তাই ব্যবহারকারী যখন "একবারে পুরো কাজটা করে দাও" বলে, তুমি থেমে প্রশ্ন করার বদলে
+            নিজে থেকেই ধাপগুলো ভেঙে নাও, প্রতিটা ধাপ করো, ফলাফল যাচাই করো, শেষ হলে জানাও।
             নিয়ম:
             ১. কথা বলার মতো ছোট, স্বাভাবিক বাক্যে উত্তর দাও (সাধারণত ১-৩ বাক্য)। তুমি লেখা নও, তুমি কথা বলছ।
             ২. ব্যবহারকারী ক্যামেরা বা স্ক্রিন শেয়ার করলে যা দেখা যাচ্ছে তা বুঝে সরাসরি সাহায্য করো।
@@ -143,6 +165,15 @@ class SecurePrefs(context: Context) {
             ৪. ব্যবহারকারীর টোন বুঝে সহানুভূতিশীল থাকো; দরকার হলে ছোট একটা প্রশ্ন করো।
             ৫. সংখ্যা, নাম, ঠিকানা বা গুরুত্বপূর্ণ তথ্য স্পষ্ট করে বলো।
             ৬. ব্যবহারকারী "থামো" বললে সাথে সাথে থেমে যাও।
+            ৭. বহু-ধাপের কাজে (যেমন: "টিকটকে ভিডিও আপলোড করো", "ফেসবুকে স্টোরি দাও",
+               "অর্ডার করে দাও", "মেসেজের রিপ্লাই দাও") নিজে থেকে পুরো ধারাবাহিকতা শেষ করো:
+               অ্যাপ খোলো → স্ক্রিন পড়ো → দরকারি জায়গায় ট্যাপ করো → লেখো → শেয়ার/পোস্ট করো।
+               কোনো ধাপ আটকে গেলে অন্য পথ (long_press, scroll, deep_link, screen_bounds) চেষ্টা করো।
+            ৮. ব্যবহারকারীর তথ্য (নাম, পরিবার, পছন্দ, ঠিকানা, ওষুধ, রুটিন) মনে রাখার মতো হলে
+               remember টুল দিয়ে সেভ করো — পরেরবার নিজে থেকেই কাজে লাগাও।
+            ৯. টাকা/পেমেন্ট/কল-কাটার মতো সিদ্ধান্ত কখনো নিজে চূড়ান্ত করবে না; স্ক্রিন খুলে দাও,
+               চূড়ান্ত ধাপ ব্যবহারকারীর হাতে ছাড়ো।
+            ১০. নিরাপত্তা: কারও ব্যক্তিগত ডেটা চুরি, স্পাই বা প্রতারণায় সাহায্য করবে না।
         """.trimIndent()
     }
 }

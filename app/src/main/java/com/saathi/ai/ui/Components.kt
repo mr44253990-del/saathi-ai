@@ -42,21 +42,26 @@ import com.saathi.ai.ui.theme.Pink
 import com.saathi.ai.ui.theme.TextMuted
 import com.saathi.ai.ui.theme.TextPrimary
 import com.saathi.ai.ui.theme.Violet
+import com.saathi.ai.ui.theme.jimi
 
 /** Full-screen animated background used by every screen. */
 @Composable
 fun SaathiBackground(content: @Composable BoxScope.() -> Unit) {
+    val p = jimi
     Box(
         modifier = Modifier
+            .background(Brush.verticalGradient(listOf(p.bgTop, p.bgMid, p.bgBottom)))
             .background(
-                Brush.linearGradient(
-                    colors = listOf(Color(0xFF070B14), Color(0xFF0D1226), Color(0xFF080C18))
+                Brush.radialGradient(
+                    colors = listOf(p.glowA.copy(alpha = 0.22f), Color.Transparent),
+                    radius = 1100f
                 )
             )
             .background(
                 Brush.radialGradient(
-                    colors = listOf(Violet.copy(alpha = 0.18f), Color.Transparent),
-                    radius = 900f
+                    colors = listOf(p.glowB.copy(alpha = 0.12f), Color.Transparent),
+                    center = androidx.compose.ui.geometry.Offset(1600f, 2200f),
+                    radius = 1200f
                 )
             )
     ) {
@@ -74,7 +79,7 @@ fun GlassCard(
 ) {
     Surface(
         modifier = modifier,
-        color = NightSurface.copy(alpha = 0.72f),
+        color = jimi.bgMid.copy(alpha = 0.72f),
         shape = RoundedCornerShape(corner),
         tonalElevation = 0.dp
     ) {
@@ -108,7 +113,7 @@ fun GradientButton(
             .clip(RoundedCornerShape(50))
             .background(
                 Brush.horizontalGradient(
-                    listOf(Violet.copy(alpha = alpha), Aqua.copy(alpha = alpha * 0.92f))
+                    listOf(jimi.primary.copy(alpha = alpha), jimi.secondary.copy(alpha = alpha * 0.92f))
                 )
             )
             .clickable(enabled = enabled, onClick = onClick)
@@ -148,7 +153,7 @@ fun RoundAction(
                 .clip(CircleShape)
                 .background(
                     if (active) {
-                        Brush.linearGradient(listOf(Aqua.copy(alpha = 0.9f), Violet.copy(alpha = 0.9f)))
+                        Brush.linearGradient(listOf(jimi.secondary.copy(alpha = 0.9f), jimi.primary.copy(alpha = 0.9f)))
                     } else {
                         Brush.linearGradient(
                             listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.04f))
@@ -171,7 +176,7 @@ fun RoundAction(
             )
         }
         Spacer(Modifier.size(6.dp))
-        Text(label, color = if (active) Aqua else TextMuted, fontSize = 10.sp)
+        Text(label, color = if (active) jimi.secondary else jimi.textMuted, fontSize = 10.sp)
     }
 }
 
@@ -195,7 +200,7 @@ fun StatusChip(text: String, dotColor: Color, modifier: Modifier = Modifier) {
         Spacer(Modifier.width(8.dp))
         Text(
             text,
-            color = TextPrimary.copy(alpha = 0.92f),
+            color = jimi.textPrimary.copy(alpha = 0.92f),
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium
         )

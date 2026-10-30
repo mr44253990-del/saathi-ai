@@ -10,6 +10,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -60,7 +61,8 @@ import com.saathi.ai.ui.theme.Violet
 fun SettingsScreen(
     prefs: SecurePrefs,
     onBack: () -> Unit,
-    onSaved: () -> Unit
+    onSaved: () -> Unit,
+    onOpenThemes: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -237,6 +239,31 @@ fun SettingsScreen(
             Spacer(Modifier.height(14.dp))
 
             // ---------- Toggles
+            SectionCard(title = "চেহারা ও থিম", icon = "🎨") {
+                val theme = com.saathi.ai.ui.theme.JimiThemes.get(prefs.themeId)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(
+                                    listOf(theme.palette.bgTop, theme.palette.bgMid)
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(theme.emoji, fontSize = 20.sp)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(theme.name, color = com.saathi.ai.ui.theme.jimi.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text("${theme.bangla} · ${com.saathi.ai.ui.theme.JimiThemes.all.size}টি থিম উপলব্ধ", color = com.saathi.ai.ui.theme.jimi.textMuted, fontSize = 10.5.sp)
+                    }
+                    SmallAction("বদলাও") { onOpenThemes() }
+                }
+            }
+
             SectionCard(title = "Jimi-কে ডাকো", icon = "✨") {
                 ToggleRow(
                     title = "\"হেই Jimi\" ওয়েক-ওয়ার্ড",
@@ -290,6 +317,14 @@ fun SettingsScreen(
                         }
                     }
                 }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "ডিজিটাল অ্যাসিস্ট্যান্ট বানাতে: Settings → Apps → Default apps → Digital assistant app → Jimi। " +
+                        "এরপর হোম বাটন চেপে ধরে বা পাওয়ার বাটন চেপে ধরে Jimi ডাকতে পারবে। Quick Settings-এ Jimi টাইলও যোগ করা যায়।",
+                    color = com.saathi.ai.ui.theme.jimi.textMuted,
+                    fontSize = 10.sp,
+                    lineHeight = 15.sp
+                )
             }
 
             SectionCard(title = "Jimi-র মনে রাখা কথা", icon = "🧠") {

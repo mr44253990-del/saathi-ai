@@ -3,6 +3,7 @@ package com.saathi.ai.live
 import android.content.Context
 import com.saathi.ai.access.JimiAccessibilityService
 import com.saathi.ai.access.PhoneTools
+import com.saathi.ai.access.SmartTools
 import com.saathi.ai.data.SecurePrefs
 import org.json.JSONObject
 
@@ -13,6 +14,7 @@ import org.json.JSONObject
 class ToolExecutor(private val context: Context) {
 
     private val tools = PhoneTools(context)
+    private val smart = SmartTools(context)
     private val prefs = SecurePrefs(context)
 
     fun execute(name: String, args: JSONObject): String {
@@ -21,6 +23,24 @@ class ToolExecutor(private val context: Context) {
             when (name) {
                 "open_app" -> tools.openApp(a.str("name"))
                 "open_url" -> tools.openUrl(a.str("url"))
+                "web_search" -> smart.webSearch(a.str("query"))
+                "open_weather" -> smart.openWeather(a.str("location"))
+                "map_search" -> smart.mapSearch(a.str("query"))
+                "play_store_search" -> smart.playStoreSearch(a.str("query"))
+                "upi_pay" -> smart.upiPay(a.str("vpa"), a.str("payee"), a.str("amount"), a.str("note"))
+                "upi_scan" -> smart.upiScan()
+                "copy_text" -> smart.copy(a.str("text"))
+                "paste_text" -> smart.paste()
+                "share_text" -> smart.shareText(a.str("text"))
+                "medicine_reminder" -> smart.medicineReminder(a.str("medicine"), a.str("time"))
+                "battery_status" -> smart.batteryReport()
+                "time_now" -> smart.timeNow()
+                "find_app" -> smart.findPackage(a.str("name")) ?: "কোনো অ্যাপ পাওয়া যায়নি"
+                "deep_link" -> if (smart.deepLink(a.str("app"), a.str("value"))) "খুলে দিয়েছি" else "এটি খোলা গেল না"
+                "long_press" -> tools.screenLongPress(a.str("text"))
+                "screen_bounds" -> tools.screenBounds(a.str("text"))
+                "read_clipboard" -> smart.paste()
+                "write_clipboard" -> smart.copy(a.str("text"))
                 "search_youtube" -> tools.searchYouTube(a.str("query"))
                 "play_on_youtube" -> tools.playOnYouTube(a.str("query"))
 

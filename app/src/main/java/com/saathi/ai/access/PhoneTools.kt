@@ -452,6 +452,20 @@ class PhoneTools(private val context: Context) {
         return if (service.globalAction(action)) "Pressed $key" else "Could not press $key"
     }
 
+
+    fun screenLongPress(text: String): String {
+        val service = JimiAccessibilityService.instance ?: return "Accessibility বন্ধ"
+        val bounds = service.boundsOf(text) ?: return "\"$text\" স্ক্রিনে পাওয়া যায়নি"
+        return if (service.longPress(bounds.centerX().toFloat(), bounds.centerY().toFloat()))
+            "\"$text\" চেপে ধরেছি" else "লং প্রেস করা গেল না"
+    }
+
+    fun screenBounds(text: String): String {
+        val service = JimiAccessibilityService.instance ?: return "Accessibility বন্ধ"
+        val b = service.boundsOf(text) ?: return "পাওয়া যায়নি"
+        return "${b.centerX()}, ${b.centerY()}"
+    }
+
     fun readScreen(): String {
         val service = JimiAccessibilityService.instance
             ?: return "Accessibility is off — please enable Jimi in Settings → Accessibility"

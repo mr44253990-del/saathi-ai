@@ -312,4 +312,11 @@ object SaathiIcons {
             close()
         }
     }
+
+    val Bolt: ImageVector by lazy {
+        icon("bolt") {
+            moveTo(13.2f, 2.2f); lineTo(5.4f, 13.4f); lineTo(10.4f, 13.4f)
+            lineTo(9.2f, 21.8f); lineTo(18.2f, 10.2f); lineTo(12.6f, 10.2f); close()
+        }
+    }
 }
