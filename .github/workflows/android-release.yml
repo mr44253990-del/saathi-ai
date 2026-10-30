@@ -1,4 +1,4 @@
-# 🚀 Build & Release APK — Saathi (সাথী)
+# 🚀 Build & Release APK — Jimi
 
 name: Build & Release APK
 
@@ -121,10 +121,10 @@ jobs:
           mkdir -p out
           VN="${{ steps.ver.outputs.version_name }}"
           VC="${{ steps.ver.outputs.version_code }}"
-          cp app/build/outputs/apk/debug/app-debug.apk "out/saathi-v${VN}-b${VC}-debug.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "out/jimi-v${VN}-b${VC}-debug.apk"
 
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then
-            cp app/build/outputs/apk/release/app-release.apk "out/saathi-v${VN}-b${VC}-release.apk"
+            cp app/build/outputs/apk/release/app-release.apk "out/jimi-v${VN}-b${VC}-release.apk"
           fi
 
           echo "### 📱 Built APKS" >> "$GITHUB_STEP_SUMMARY"
@@ -152,9 +152,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.version_name }}-build${{ steps.ver.outputs.version_code }}
-          name: সাথী v${{ steps.ver.outputs.version_name }} (build ${{ steps.ver.outputs.version_code }})
+          name: Jimi v${{ steps.ver.outputs.version_name }} (build ${{ steps.ver.outputs.version_code }})
           body: |
-            ## সাথী — Gemini Live AI Companion
+            ## Jimi — তোমার হাতের Gemini Live সহকারী
 
             | | |
             |---|---|
@@ -164,14 +164,16 @@ jobs:
             | Built by | GitHub Actions |
 
             ### ইনস্টল করো
-            1. নিচের `saathi-*.apk` ফাইলটা ফোনে ডাউনলোড করো
+            1. নিচের `jimi-*.apk` ফাইলটা ফোনে ডাউনলোড করো
             2. Settings → "Install unknown apps" → ফাইল ম্যানেজার/ব্রাউজারকে অনুমতি দাও
             3. APK-তে ট্যাপ করে ইনস্টল করো
 
             ### প্রথমবার
-            1. অ্যাপ খুলে সব পারমিশন দাও
-            2. সেটিংসে [Gemini API Key](https://aistudio.google.com/apikey) সেভ করো
-            3. "সাথে কথা বলো" চেপে বাংলায় কথা শুরু করো 🎙️
+            1. অ্যাপ খুলে **সব** পারমিশন দাও (SMS, কল, কন্টাক্ট, মিডিয়া)
+            2. **Accessibility** চালু করো — এটাই Jimi-র হাত-পা: ট্যাপ, স্ক্রল, অ্যাপ চালানো
+            3. **Overlay** অনুমতি দাও — কাজের সময় Jimi ছোট বাবলে নেমে যাবে
+            4. সেটিংসে [Gemini API Key](https://aistudio.google.com/apikey) সেভ করো
+            5. `"হেই Jimi"` বলে ডাকো, বা বোতামে চাপ দিয়ে বাংলায় কথা বলো 🎙️
           files: out/*.apk
           fail_on_unmatched_files: false
           generate_release_notes: true
