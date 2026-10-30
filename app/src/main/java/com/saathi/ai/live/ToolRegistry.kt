@@ -17,10 +17,13 @@ object ToolRegistry {
     ): JSONObject {
         val properties = JSONObject()
         props.forEach { (key, typeAndDesc) ->
-            properties.put(
-                key,
-                JSONObject().put("type", typeAndDesc.first).put("description", typeAndDesc.second)
-            )
+            val prop = JSONObject()
+                .put("type", typeAndDesc.first)
+                .put("description", typeAndDesc.second)
+            if (typeAndDesc.first == "ARRAY") {
+                prop.put("items", JSONObject().put("type", "STRING"))
+            }
+            properties.put(key, prop)
         }
         val parameters = JSONObject()
             .put("type", "OBJECT")
@@ -369,6 +372,36 @@ object ToolRegistry {
             "Put text on the clipboard.",
             mapOf("text" to ("STRING" to "Text")),
             listOf("text")
+        )
+
+
+        // ---- app knowledge
+        list += fn(
+            "launch_app",
+            "Open any installed app by the name the user said (works for Bangla names, brand names, typos). Also tells you what the app is for.",
+            mapOf("name" to ("STRING" to "App name")),
+            listOf("name")
+        )
+        list += fn(
+            "list_apps",
+            "List installed apps with a one-line purpose each — use it when the user asks 'আমার ফোনে কী কী অ্যাপ আছে'.",
+            mapOf("limit" to ("NUMBER" to "How many"))
+        )
+        list += fn(
+            "app_purpose",
+            "Explain what an app is for, from its package name.",
+            mapOf("package" to ("STRING" to "Package id")),
+            listOf("package")
+        )
+        list += fn(
+            "remember_playbook",
+            "Save the working step-by-step recipe for a goal inside an app, so next time is faster.",
+            mapOf(
+                "package" to ("STRING" to "Package id"),
+                "goal" to ("STRING" to "What the user wanted"),
+                "steps" to ("ARRAY" to "Ordered list of labels/actions that worked")
+            ),
+            listOf("package", "goal")
         )
 
         // ---- memory

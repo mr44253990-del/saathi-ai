@@ -77,6 +77,7 @@ fun HomeScreen(
     onSendText: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenMemory: () -> Unit = {},
+    onOpenDraw: () -> Unit = {},
     onMinimize: () -> Unit
 ) {
     val p = jimi
@@ -263,6 +264,7 @@ fun HomeScreen(
                     QuickChip("আজকের আবহাওয়া") { onSendText("আজকের আবহাওয়া বলো") }
                     QuickChip("নিচে স্ক্রল করো") { onSendText("নিচে স্ক্রল করো") }
                     QuickChip("মনে রাখো আমি সাভারে থাকি") { onSendText("মনে রাখো আমি সাভারে থাকি") }
+                    QuickChip("একটা ছবি আঁকো") { onOpenDraw() }
                 }
             }
 

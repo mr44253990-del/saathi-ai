@@ -41,6 +41,7 @@ import com.saathi.ai.live.Phase
 import com.saathi.ai.live.SessionHub
 import com.saathi.ai.ui.HomeScreen
 import com.saathi.ai.ui.MemoryScreen
+
 import com.saathi.ai.ui.PermissionsScreen
 import com.saathi.ai.ui.SettingsScreen
 import com.saathi.ai.ui.SplashScreen
@@ -318,6 +319,19 @@ private fun JimiApp(
                 screen = "home"
             })
 
+            "draw" -> com.saathi.ai.create.DrawingScreen(
+                onBack = { screen = "home" },
+                onShare = { bmp ->
+                    runCatching {
+                        val dir = java.io.File(context.cacheDir, "art")
+                        dir.mkdirs()
+                        val f = java.io.File(dir, "jimi-art-" + System.currentTimeMillis() + ".png")
+                        f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 96, it) }
+                        com.saathi.ai.access.SmartTools(context).shareImage("file://" + f.absolutePath)
+                    }
+                }
+            )
+
             "memory" -> MemoryScreen(
                 memory = com.saathi.ai.data.MemoryStore(context),
                 chats = com.saathi.ai.data.ChatStore(context),
@@ -364,6 +378,7 @@ private fun JimiApp(
                 onSendText = onSendText,
                 onOpenSettings = { screen = "settings" },
                 onOpenMemory = { screen = "memory" },
+                onOpenDraw = { screen = "draw" },
                 onMinimize = onMinimize
             )
         }

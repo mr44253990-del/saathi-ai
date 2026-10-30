@@ -4,6 +4,7 @@ import android.content.Context
 import com.saathi.ai.access.JimiAccessibilityService
 import com.saathi.ai.access.PhoneTools
 import com.saathi.ai.access.SmartTools
+import com.saathi.ai.access.AppKnowledge
 import com.saathi.ai.data.SecurePrefs
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -16,6 +17,7 @@ class ToolExecutor(private val context: Context) {
 
     private val tools = PhoneTools(context)
     private val smart = SmartTools(context)
+    private val apps = AppKnowledge(context)
     private val prefs = SecurePrefs(context)
 
     /**
@@ -58,10 +60,36 @@ class ToolExecutor(private val context: Context) {
                 "copy_text" -> smart.copy(a.str("text"))
                 "paste_text" -> smart.paste()
                 "share_text" -> smart.shareText(a.str("text"))
-                "medicine_reminder" -> smart.medicineReminder(a.str("medicine"), a.str("time"))
+                "medicine_reminder" -> {
+                    com.saathi.ai.data.MemoryStore(context)
+                        .addReminder(a.str("medicine"), a.str("time"))
+                    smart.medicineReminder(a.str("medicine"), a.str("time"))
+                }
                 "battery_status" -> smart.batteryReport()
                 "time_now" -> smart.timeNow()
-                "find_app" -> smart.findPackage(a.str("name")) ?: "কোনো অ্যাপ পাওয়া যায়নি"
+                "find_app" -> {
+                    val app = apps.resolve(a.str("name"))
+                    if (app == null) "কোনো অ্যাপ পাওয়া যায়নি"
+                    else "${app.label} (${app.pkg}) — ${app.purpose}"
+                }
+                "launch_app" -> {
+                    val app = apps.resolve(a.str("name"))
+                    when {
+                        app == null -> "«${a.str("name")}» নামে কোনো অ্যাপ ইনস্টল নেই"
+                        apps.launch(app) -> "${app.label} খুলেছি — ${app.purpose}"
+                        else -> "${app.label} খোলা গেল না"
+                    }
+                }
+                "list_apps" -> apps.installedApps()
+                    .take(a.int("limit", 25))
+                    .joinToString("\n") { "${it.label} — ${it.purpose}" }
+                "app_purpose" -> apps.purposeOf(a.str("package"))
+                "remember_playbook" -> {
+                    val steps = a.optJSONArray("steps")
+                    val list = (0 until (steps?.length() ?: 0)).map { steps!!.optString(it) }
+                    apps.rememberPlaybook(a.str("package"), a.str("goal"), list)
+                    "মুখস্থ করেছি — পরেরবার দ্রুত হবে"
+                }
                 "deep_link" -> if (smart.deepLink(a.str("app"), a.str("value"))) "খুলে দিয়েছি" else "এটি খোলা গেল না"
                 "long_press" -> tools.screenLongPress(a.str("text"))
                 "screen_bounds" -> tools.screenBounds(a.str("text"))
