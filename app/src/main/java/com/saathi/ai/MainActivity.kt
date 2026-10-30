@@ -33,11 +33,14 @@ import com.saathi.ai.access.JimiAccessibilityService
 import com.saathi.ai.bubble.BubbleService
 import com.saathi.ai.capture.CameraController
 import com.saathi.ai.capture.LiveSessionService
+import com.saathi.ai.data.ChatStore
+import com.saathi.ai.data.MemoryStore
 import com.saathi.ai.data.SecurePrefs
 import com.saathi.ai.hotword.HotwordService
 import com.saathi.ai.live.Phase
 import com.saathi.ai.live.SessionHub
 import com.saathi.ai.ui.HomeScreen
+import com.saathi.ai.ui.MemoryScreen
 import com.saathi.ai.ui.PermissionsScreen
 import com.saathi.ai.ui.SettingsScreen
 import com.saathi.ai.ui.SplashScreen
@@ -315,6 +318,12 @@ private fun JimiApp(
                 screen = "home"
             })
 
+            "memory" -> MemoryScreen(
+                memory = com.saathi.ai.data.MemoryStore(context),
+                chats = com.saathi.ai.data.ChatStore(context),
+                onBack = { screen = "settings" }
+            )
+
             "themes" -> ThemePickerScreen(
                 current = prefs.themeId,
                 onPick = {
@@ -354,6 +363,7 @@ private fun JimiApp(
                 onToggleHotword = onToggleHotword,
                 onSendText = onSendText,
                 onOpenSettings = { screen = "settings" },
+                onOpenMemory = { screen = "memory" },
                 onMinimize = onMinimize
             )
         }

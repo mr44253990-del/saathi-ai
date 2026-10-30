@@ -76,6 +76,7 @@ fun HomeScreen(
     onToggleHotword: () -> Unit,
     onSendText: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenMemory: () -> Unit = {},
     onMinimize: () -> Unit
 ) {
     val p = jimi
@@ -126,6 +127,8 @@ fun HomeScreen(
 
                 Spacer(Modifier.width(8.dp))
 
+                CircleIcon(SaathiIcons.Brain, "মেমরি") { onOpenMemory() }
+                Spacer(Modifier.width(6.dp))
                 CircleIcon(SaathiIcons.Minimize, "মিনিমাইজ") { onMinimize() }
                 Spacer(Modifier.width(6.dp))
                 CircleIcon(SaathiIcons.Settings, "সেটিংস") { onOpenSettings() }
