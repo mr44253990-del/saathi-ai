@@ -454,7 +454,7 @@ private fun ControlDock(
                     .padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                androidx.compose.material3.BasicTextField(
+                androidx.compose.foundation.text.BasicTextField(
                     value = text,
                     onValueChange = onText,
                     modifier = Modifier.weight(1f),
@@ -558,6 +558,7 @@ fun phaseLabel(phase: Phase): String = when (phase) {
     Phase.ENDED -> "শেষ"
 }
 
+@Composable
 fun phaseColor(phase: Phase): Color = when (phase) {
     Phase.IDLE -> jimi.textMuted
     Phase.CONNECTING, Phase.RECONNECTING -> Color(0xFFFFB86B)

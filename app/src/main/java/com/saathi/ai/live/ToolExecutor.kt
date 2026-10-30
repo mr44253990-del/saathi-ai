@@ -23,10 +23,10 @@ class ToolExecutor(private val context: Context) {
             when (name) {
                 "open_app" -> tools.openApp(a.str("name"))
                 "open_url" -> tools.openUrl(a.str("url"))
-                "web_search" -> smart.webSearch(a.str("query"))
+                "web_search" -> if (smart.webSearch(a.str("query"))) "খুঁজে দেখাচ্ছি" else "সার্চ করা গেল না"
                 "open_weather" -> smart.openWeather(a.str("location"))
-                "map_search" -> smart.mapSearch(a.str("query"))
-                "play_store_search" -> smart.playStoreSearch(a.str("query"))
+                "map_search" -> if (smart.mapSearch(a.str("query"))) "ম্যাপে খুঁজছি" else "ম্যাপ খোলা গেল না"
+                "play_store_search" -> if (smart.playStoreSearch(a.str("query"))) "Play Store-এ খুঁজছি" else "Play Store খোলা গেল না"
                 "upi_pay" -> smart.upiPay(a.str("vpa"), a.str("payee"), a.str("amount"), a.str("note"))
                 "upi_scan" -> smart.upiScan()
                 "copy_text" -> smart.copy(a.str("text"))

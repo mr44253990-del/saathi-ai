@@ -12,6 +12,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import androidx.compose.ui.graphics.toArgb
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -24,6 +25,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.saathi.ai.live.Phase
 import com.saathi.ai.live.SessionHub
+import kotlinx.coroutines.launch
 import kotlin.math.hypot
 import kotlin.math.min
 
