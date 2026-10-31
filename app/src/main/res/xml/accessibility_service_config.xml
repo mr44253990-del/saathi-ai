@@ -9,12 +9,17 @@
     they explode the event stream on modern ROMs (MIUI/HyperOS especially) and
     the watchdog then disables the service.
   * Events stay on window-state + window-content, which is all Jimi needs.
+  * canTakeScreenshot="true" (API 30+) is what lets Jimi *see* without a screen-share:
+    it grabs a frame, reads it, deletes it, and grabs a fresh one when needed. On older
+    devices the attribute is simply ignored and Jimi falls back to the accessibility
+    tree dump, so nothing breaks.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagDefault|flagReportViewIds"
     android:canPerformGestures="true"
+    android:canTakeScreenshot="true"
     android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_description"
     android:notificationTimeout="180" />

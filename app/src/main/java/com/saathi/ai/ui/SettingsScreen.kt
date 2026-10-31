@@ -33,7 +33,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import com.saathi.ai.ui.theme.JimiThemeSpec
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -80,15 +87,50 @@ fun SettingsScreen(
     var revealKey by remember { mutableStateOf(false) }
     var memory by remember { mutableStateOf(prefs.recall()) }
     var saved by remember { mutableStateOf(false) }
+    var report by remember { mutableStateOf("") }
+    var deepInfo by remember { mutableStateOf("রুট ও টার্মিনালের অবস্থা দেখা হচ্ছে…") }
+    val scope = rememberCoroutineScope()
+
+    // Both of these touch su / PackageManager, so they never run on the UI thread.
+    LaunchedEffect(Unit) {
+        deepInfo = withContext(Dispatchers.IO) {
+            val root = runCatching { com.saathi.ai.access.RootBridge.available() }.getOrDefault(false)
+            val termux = runCatching {
+                context.packageManager.getPackageInfo("com.termux", 0); true
+            }.getOrElse { false }
+            val acc = com.saathi.ai.access.JimiAccessibilityService.instance != null
+            "রুট: ${if (root) "আছে (su চলছে)" else "নেই"} · Termux: ${if (termux) "ইনস্টল" else "ইনস্টল নেই"} · " +
+                "অ্যাক্সেসিবিলিটি: ${if (acc) "চালু" else "বন্ধ"}"
+        }
+    }
+
+    fun run(label: String, block: () -> String) {
+        report = "$label চলছে…"
+        scope.launch {
+            report = withContext(Dispatchers.IO) {
+                runCatching { block() }.getOrElse { "ব্যর্থ: ${it.message}" }
+            }
+        }
+    }
+
+    val scroll = rememberScrollState()
+    val sectionNames = listOf(
+        "কী", "মডেল", "কণ্ঠ", "চেহারা", "ডাক",
+        "রুট/টার্মিনাল", "ব্যাকগ্রাউন্ড", "অটো রিকানেক্ট", "বাবল", "ভিশন", "হেলথ", "মেমরি", "অ্যাডভান্সড"
+    )
+    val activeSection = if (scroll.maxValue <= 0) 0 else
+        ((scroll.value.toFloat() / scroll.maxValue) * (sectionNames.size - 1)).roundToInt()
 
     SaathiBackground {
+      Row(Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
+                .weight(1f)
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(horizontal = 20.dp)
         ) {
             Row(
@@ -114,7 +156,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(10.dp))
 
             ProfileHero(
-                themeEmoji = JimiThemes.get(prefs.themeId).emoji,
+                themeSpec = JimiThemes.get(prefs.themeId),
                 themeName = JimiThemes.get(prefs.themeId).bangla,
                 model = model,
                 voice = voice,
@@ -124,7 +166,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(12.dp))
 
             // ---------- API key
-            SectionCard(title = "Gemini API Key", icon = "🔑") {
+            SectionCard(title = "Gemini API Key", icon = SaathiIcons.Key) {
                 OutlinedTextField(
                     value = apiKey,
                     onValueChange = { apiKey = it.trim() },
@@ -176,7 +218,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(14.dp))
 
             // ---------- Model
-            SectionCard(title = "মডেল", icon = "🧠") {
+            SectionCard(title = "মডেল", icon = SaathiIcons.Brain) {
                 ChipRow(
                     options = SecurePrefs.MODELS,
                     selected = model,
@@ -197,7 +239,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(14.dp))
 
             // ---------- Voice
-            SectionCard(title = "কণ্ঠস্বর", icon = "🎙️") {
+            SectionCard(title = "কণ্ঠস্বর", icon = SaathiIcons.Mic) {
                 ChipRow(
                     options = SecurePrefs.VOICES,
                     selected = voice,
@@ -208,7 +250,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(14.dp))
 
             // ---------- Language
-            SectionCard(title = "ভাষা", icon = "🌐") {
+            SectionCard(title = "ভাষা", icon = SaathiIcons.Globe) {
                 ChipRow(
                     options = listOf("bn", "en", "auto"),
                     selected = language,
@@ -226,7 +268,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(14.dp))
 
             // ---------- Persona
-            SectionCard(title = "Jimi-র ব্যক্তিত্ব", icon = "💜") {
+            SectionCard(title = "Jimi-র ব্যক্তিত্ব", icon = SaathiIcons.Heart) {
                 OutlinedTextField(
                     value = persona,
                     onValueChange = { persona = it },
@@ -253,7 +295,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(14.dp))
 
             // ---------- Toggles
-            SectionCard(title = "রঙের ছোঁয়া", icon = "🎨") {
+            SectionCard(title = "রঙের ছোঁয়া", icon = SaathiIcons.Palette) {
                 Text(
                     "যেকোনো থিমের ওপর একটা রঙ চাপিয়ে দাও — অরব, বাটন, গ্লো সব একসাথে বদলে যাবে।",
                     color = TextMuted, fontSize = 10.5.sp, lineHeight = 15.sp
@@ -268,7 +310,7 @@ fun SettingsScreen(
                 )
             }
 
-            SectionCard(title = "চেহারা ও থিম", icon = "🎨") {
+            SectionCard(title = "চেহারা ও থিম", icon = SaathiIcons.Palette) {
                 val theme = com.saathi.ai.ui.theme.JimiThemes.get(prefs.themeId)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
@@ -282,7 +324,7 @@ fun SettingsScreen(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(theme.emoji, fontSize = 20.sp)
+                        ThemeMark(theme, 22.dp)
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
@@ -293,7 +335,7 @@ fun SettingsScreen(
                 }
             }
 
-            SectionCard(title = "Jimi-কে ডাকো", icon = "✨") {
+            SectionCard(title = "Jimi-কে ডাকো", icon = SaathiIcons.Sparkle) {
                 ToggleRow(
                     title = "\"হেই Jimi\" ওয়েক-ওয়ার্ড",
                     subtitle = "মাইক বন্ধ থাকলেও যেকোনো অ্যাপ থেকে ডাকলেই Jimi জেগে উঠবে",
@@ -360,7 +402,7 @@ fun SettingsScreen(
                 )
             }
 
-            SectionCard(title = "Jimi-র মনে রাখা কথা", icon = "🧠") {
+            SectionCard(title = "Jimi-র মনে রাখা কথা", icon = SaathiIcons.Brain) {
                 Text(
                     text = if (memory.isBlank()) "এখনো কিছু মনে নেই। কথা বলার সময় Jimi নিজেই মনে রাখার মতো তথ্য সেভ করবে।"
                     else memory,
@@ -377,7 +419,211 @@ fun SettingsScreen(
                 }
             }
 
-            SectionCard(title = "অ্যাডভান্সড", icon = "⚙️") {
+            // ------------------------------------------------ deep power: root + terminal
+            SectionCard(title = "রুট ও টার্মিনাল", icon = SaathiIcons.Root) {
+                Text(deepInfo, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
+                Spacer(Modifier.height(10.dp))
+                ToggleRow(
+                    title = "রুট (su) ব্যবহার করো",
+                    subtitle = "অনুমতিতে কাজ আটকালে Jimi রুট দিয়ে সেই কাজ শেষ করার চেষ্টা করবে",
+                    checked = prefs.rootMode,
+                    onChange = { prefs.rootMode = it }
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmallAction("রুট পরীক্ষা") { run("রুট পরীক্ষা") { com.saathi.ai.access.RootBridge.status(context) } }
+                    SmallAction("Termux খোলো") {
+                        run("Termux") {
+                            com.saathi.ai.access.AppDirectory.launchPackage(context, "com.termux", "termux")
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmallAction("শেল কমান্ড চালিয়ে দেখো") {
+                        run("শেল") { com.saathi.ai.access.TerminalTools(context).shell("id && uname -a && df -h /data | tail -1") }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Termux-এ কমান্ড চালাতে হলে Termux-এর ফাইল ~/.termux/termux.properties-এ " +
+                        "allow-external-apps=true থাকতে হবে। না থাকলে Jimi রুট থাকলে নিজেই ঠিক করে নেয়, " +
+                        "নয়তো তোমাকে একবার মাত্র Termux খুলে সেটিং করতে বলে।",
+                    color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp
+                )
+            }
+
+            // ------------------------------------------------ background work + timer
+            SectionCard(title = "ব্যাকগ্রাউন্ড কাজ ও টাইমার", icon = SaathiIcons.Task) {
+                ToggleRow(
+                    title = "ব্যাকগ্রাউন্ডে কাজ চালিয়ে যাক",
+                    subtitle = "বড় কাজ টু-ডু লিস্টে ভেঙে অ্যাপ বন্ধ থাকলেও চলবে, শেষ হলে টিক পড়বে",
+                    checked = prefs.backgroundTasks,
+                    onChange = { prefs.backgroundTasks = it }
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmallAction("ওয়ার্কার চালু") {
+                        run("ওয়ার্কার") {
+                            com.saathi.ai.task.TaskRunnerService.start(context, null)
+                            "ব্যাকগ্রাউন্ড ওয়ার্কার চালু — নোটিফিকেশনে অগ্রগতি দেখাবে"
+                        }
+                    }
+                    SmallAction("ওয়ার্কার থামাও") {
+                        run("থামানো") {
+                            com.saathi.ai.task.TaskRunnerService.stop(context)
+                            "ওয়ার্কার থামিয়েছি"
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                SmallAction("ব্যাটারি অপটিমাইজেশন থেকে বাদ দাও") {
+                    runCatching {
+                        context.startActivity(
+                            Intent(
+                                android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                Uri.parse("package:" + context.packageName)
+                            )
+                        )
+                        "রিকোয়েস্ট পাঠিয়েছি — Allow চেপে দাও"
+                    }.getOrElse { "খোলা যায়নি: ${it.message}" }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "«১০ মিনিট ধরে কাজ করো» বললে Jimi ওই সময় ধরে লক্ষ্য নিয়ে খাটবে — " +
+                        "মাঝে স্ক্রিন বন্ধ করলেও থামবে না।",
+                    color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp
+                )
+            }
+
+            // ------------------------------------------------ auto reconnect on voice
+            SectionCard(title = "চুপ থাকলে অটো রিকানেক্ট", icon = SaathiIcons.Mic) {
+                ToggleRow(
+                    title = "গলা শুনলে নিজে যুক্ত হবে",
+                    subtitle = "অনেকক্ষণ চুপ থাকলে সেশন পার্ক হয়ে যাবে, তুমি কথা শুরু করলেই আবার যুক্ত হবে",
+                    checked = prefs.autoReconnectVoice,
+                    onChange = {
+                        prefs.autoReconnectVoice = it
+                        runCatching {
+                            com.saathi.ai.capture.LiveSessionService.instance?.setAutoReconnect(it)
+                        }
+                    }
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("কতক্ষণ চুপ থাকলে পার্ক হবে", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    listOf(30, 60, 120, 300, 0).forEach { sec ->
+                        val on = prefs.idleParkSeconds == sec
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (on) jimi.secondary.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.07f)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (on) jimi.secondary.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.10f),
+                                    RoundedCornerShape(50)
+                                )
+                                .clickable { prefs.idleParkSeconds = sec }
+                                .padding(horizontal = 12.dp, vertical = 7.dp)
+                        ) {
+                            Text(
+                                if (sec == 0) "কখনো না" else "$sec সে.",
+                                color = if (on) TextPrimary else TextMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "পার্ক অবস্থায় শুধু মাইকের শক্তি মাপা হয় — অডিও কোথাও পাঠানো হয় না।",
+                    color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp
+                )
+            }
+
+            // ------------------------------------------------ bubble look
+            SectionCard(title = "বাবল", icon = SaathiIcons.Bubble) {
+                Text("চেহারা", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("pill" to "গোলক + লেখা", "orb" to "শুধু গোলক").forEach { (id, label) ->
+                        val on = prefs.bubbleStyle == id
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(if (on) jimi.secondary.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.07f))
+                                .border(
+                                    1.dp,
+                                    if (on) jimi.secondary.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.10f),
+                                    RoundedCornerShape(50)
+                                )
+                                .clickable { prefs.bubbleStyle = id }
+                                .padding(horizontal = 13.dp, vertical = 8.dp)
+                        ) {
+                            Text(label, color = if (on) TextPrimary else TextMuted, fontSize = 11.sp)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmallAction("বাবল দেখাও") {
+                        run("বাবল") {
+                            com.saathi.ai.bubble.BubbleService.show(context)
+                            "বাবল দেখাচ্ছি — ধরে টেনে যেকোনো জায়গায় রাখো"
+                        }
+                    }
+                    SmallAction("অবস্থান রিসেট") {
+                        prefs.bubbleX = -1
+                        prefs.bubbleY = -1
+                        "বাবল আবার ডিফল্ট জায়গায় চলে যাবে"
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "অ্যাপ খোলা থাকলে বাবল নিজেই লুকায়, ব্যাকগ্রাউন্ডে কাজ শুরু হলে নিজেই ফিরে আসে। " +
+                        "Jimi যা বলছে সেই লেখা বাবলের ভিতরেই নিচ থেকে উপরে উঠতে থাকে।",
+                    color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp
+                )
+            }
+
+            // ------------------------------------------------ screenshot vision
+            SectionCard(title = "স্ক্রিনশট ভিশন (স্ক্রিন শেয়ার ছাড়া)", icon = SaathiIcons.Visibility) {
+                ToggleRow(
+                    title = "স্ক্রিনশট তুলে দেখে কাজ করো",
+                    subtitle = "স্ক্রিন শেয়ার চালু না করেও Jimi স্ক্রিন দেখে, কোন অপশন কোথায় বের করে ট্যাপ করে",
+                    checked = prefs.visionMode,
+                    onChange = { prefs.visionMode = it }
+                )
+                Spacer(Modifier.height(12.dp))
+                SmallAction("এখনই স্ক্রিনশট নিয়ে দেখাও") {
+                    run("স্ক্রিনশট ভিশন") { com.saathi.ai.access.ScreenVision.look(context) }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "ছবি দেখা শেষ হলে তা মুছে ফেলা হয় — শুধু বর্ণনা থেকে যায়। " +
+                        "FLAG_SECURE অ্যাপ (ব্যাংকিং/ড্রম) স্ক্রিনশট দেয় না, তখন Jimi অ্যাক্সেসিবিলিটি ট্রি পড়ে কাজ চালায়।",
+                    color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp
+                )
+            }
+
+            // ------------------------------------------------ health + self repair
+            SectionCard(title = "স্বাস্থ্য পরীক্ষা ও নিজে সারানো", icon = SaathiIcons.Pulse) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmallAction("হেলথ চেক") { run("হেলথ চেক") { com.saathi.ai.access.HealthInsights(context).report() } }
+                    SmallAction("নিজে ঠিক করো") { run("নিজে সারানো") { com.saathi.ai.access.HealthInsights(context).selfFix(true) } }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "ব্যাটারি, তাপ, স্টোরেজ, র‍্যাম, নেটওয়ার্ক, অনুমতি, API — সব মেপে বলে, " +
+                        "এবং যা সম্ভব নিজেই ঠিক করে।",
+                    color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp
+                )
+            }
+
+            SectionCard(title = "অ্যাডভান্সড", icon = SaathiIcons.Settings) {
                 ToggleRow(
                     title = "কথার লিখিত রূপ দেখাও",
                     subtitle = "তুমি আর Jimi কী বলছে, স্ক্রিনে লেখা আকারে দেখাবে",
@@ -400,10 +646,34 @@ fun SettingsScreen(
                 )
             }
 
+            if (report.isNotBlank()) {
+                Spacer(Modifier.height(14.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(jimi.secondary.copy(alpha = 0.10f))
+                        .border(1.dp, jimi.secondary.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
+                        .padding(13.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(SaathiIcons.Robot, null, tint = jimi.secondary, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("জিমির রিপোর্ট", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
+                        Box(Modifier.clickable { report = "" }.padding(3.dp)) {
+                            Icon(SaathiIcons.Close, null, tint = TextMuted, modifier = Modifier.size(12.dp))
+                        }
+                    }
+                    Spacer(Modifier.height(7.dp))
+                    Text(report, color = TextPrimary.copy(alpha = 0.9f), fontSize = 11.sp, lineHeight = 16.sp)
+                }
+            }
+
             Spacer(Modifier.height(22.dp))
 
             GradientButton(
-                text = if (saved) "সেভ হয়েছে ✓" else "সেভ করো",
+                text = if (saved) "সেভ হয়েছে" else "সেভ করো",
                 modifier = Modifier.fillMaxWidth(),
                 icon = SaathiIcons.Check
             ) {
@@ -426,6 +696,17 @@ fun SettingsScreen(
             )
             Spacer(Modifier.height(26.dp))
         }
+
+        SideRail(
+            sections = sectionNames,
+            active = activeSection,
+            modifier = Modifier
+                .width(16.dp)
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        )
+      }
     }
 }
 
@@ -444,7 +725,7 @@ private fun SmallAction(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SectionCard(title: String, icon: String, content: @Composable () -> Unit) {
+private fun SectionCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -454,8 +735,17 @@ private fun SectionCard(title: String, icon: String, content: @Composable () -> 
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(icon, fontSize = 14.sp)
-            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Color.White.copy(alpha = 0.07f))
+                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(9.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = jimi.secondary, modifier = Modifier.size(14.dp))
+            }
+            Spacer(Modifier.width(9.dp))
             Text(title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.height(12.dp))
@@ -556,7 +846,7 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
  */
 @Composable
 private fun ProfileHero(
-    themeEmoji: String,
+    themeSpec: JimiThemeSpec,
     themeName: String,
     model: String,
     voice: String,
@@ -580,7 +870,7 @@ private fun ProfileHero(
                 .background(Brush.linearGradient(listOf(p.primary, p.secondary))),
             contentAlignment = Alignment.Center
         ) {
-            Text(themeEmoji, fontSize = 24.sp)
+            ThemeMark(themeSpec, 30.dp)
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
@@ -622,7 +912,7 @@ private fun AccentSwatches(selected: Int, onPick: (Int) -> Unit) {
                         contentAlignment = Alignment.Center
                     ) {
                         if (isOn) {
-                            Text("✓", color = Color.Black.copy(alpha = 0.75f), fontSize = 14.sp)
+                            Icon(SaathiIcons.Check, null, tint = Color.Black.copy(alpha = 0.8f), modifier = Modifier.size(14.dp))
                         }
                     }
                 }
@@ -641,7 +931,7 @@ private fun AccentSwatches(selected: Int, onPick: (Int) -> Unit) {
                 .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
             Text(
-                if (selected < 0) "থিমের নিজের রঙ ✓" else "থিমের নিজের রঙ",
+                "থিমের নিজের রঙ",
                 color = if (selected < 0) Color.White else TextMuted,
                 fontSize = 11.sp
             )

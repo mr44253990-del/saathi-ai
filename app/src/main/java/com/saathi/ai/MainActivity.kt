@@ -84,11 +84,13 @@ class MainActivity : ComponentActivity() {
         if (shouldWake(intent)) {
             wakeUp()
         }
+        requestedScreen = intent?.getStringExtra("screen")
 
         setContent {
             var themeSpec by remember { mutableStateOf(resolveTheme(prefs.themeId, prefs.accentOverride)) }
             SaathiTheme(spec = themeSpec) {
                 JimiApp(
+                    initialScreen = requestedScreen.also { requestedScreen = null },
                     prefs = prefs,
                     accessibilityOn = accessibilityOn,
                     bubbleOn = bubbleOn,
@@ -170,6 +172,9 @@ class MainActivity : ComponentActivity() {
      * session, the ASSIST / VOICE_COMMAND intents and the Quick Settings tile all
      * funnel through here and auto-connect.
      */
+    /** Set from the task-runner notification so the app opens straight on that page. */
+    private var requestedScreen: String? = null
+
     private fun shouldWake(intent: Intent?): Boolean {
         if (intent == null) return false
         if (intent.getBooleanExtra(HotwordService.EXTRA_WAKE, false)) return true
@@ -186,6 +191,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         refreshSpecial()
+        // The app is in front of the user, so the floating bubble steps aside.
+        if (bubbleOn) com.saathi.ai.bubble.BubbleService.autoHide(this)
         if (prefs.hotwordEnabled && !hotwordOn && hasMic()) {
             HotwordService.start(this)
             hotwordOn = true
@@ -291,6 +298,14 @@ class MainActivity : ComponentActivity() {
         screenCaptureLauncher.launch(base)
     }
 
+    override fun onPause() {
+        super.onPause()
+        // Leaving the app: the bubble comes back so background work stays visible.
+        if (bubbleOn && prefs.bubbleEnabled) {
+            com.saathi.ai.bubble.BubbleService.autoShow(this)
+        }
+    }
+
     override fun onDestroy() {
         stopCamera()
         super.onDestroy()
@@ -303,6 +318,7 @@ private fun JimiApp(
     accessibilityOn: Boolean,
     bubbleOn: Boolean,
     hotwordOn: Boolean,
+    initialScreen: String? = null,
     onThemeChanged: (String) -> Unit,
     onAccentChanged: (Int) -> Unit = {},
     onStartSession: () -> Unit,
@@ -320,7 +336,13 @@ private fun JimiApp(
 ) {
     val context = LocalContext.current
 
-    var screen by remember { mutableStateOf("splash") }
+    // A deep link (task notification) can land straight on a page once onboarding
+    // is done; otherwise always start at the splash so permissions get checked.
+    var screen by remember {
+        mutableStateOf(
+            if (initialScreen != null && prefs.onboardingDone) initialScreen else "splash"
+        )
+    }
     // secondary pages (memory/themes/files/games) remember their origin, so the
     // back arrow always returns the user to where they actually came from
     var returnTo by remember { mutableStateOf("home") }
@@ -371,21 +393,18 @@ private fun JimiApp(
             )
 
             "hub" -> HubScreen(
-                installedApps = runCatching {
-                    context.packageManager.getInstalledApplications(0).size
-                }.getOrDefault(0),
-                knownApps = com.saathi.ai.access.AppKnowledge(context).installedApps().size,
-                memoryCount = com.saathi.ai.data.MemoryStore(context).count(),
-                reminders = com.saathi.ai.data.MemoryStore(context).reminders().size,
-                chats = com.saathi.ai.data.ChatStore(context).chats().size,
                 accessibilityHealthy = accessibilityOn,
                 onOpenMemory = { returnTo = "hub"; screen = "memory" },
                 onOpenThemes = { returnTo = "hub"; screen = "themes" },
                 onOpenDraw = { returnTo = "hub"; screen = "draw" },
                 onOpenFiles = { screen = "files" },
                 onOpenGames = { screen = "games" },
+                onOpenTasks = { returnTo = "hub"; screen = "tasks" },
                 onBack = { screen = "home" }
             )
+
+            // The background worker's notification deep-links straight here.
+            "tasks" -> com.saathi.ai.ui.TaskScreen(onBack = { screen = returnTo })
 
             "files" -> FilesScreen(onBack = { screen = "hub" })
 
@@ -449,6 +468,7 @@ private fun JimiApp(
                 onOpenMemory = { returnTo = "home"; screen = "memory" },
                 onOpenDraw = { returnTo = "home"; screen = "draw" },
                 onOpenHub = { screen = "hub" },
+                onOpenTasks = { returnTo = "home"; screen = "tasks" },
                 onNewChat = {
                     com.saathi.ai.data.ChatStore(context).newChat()
                     SessionHub.update { it.copy(userText = "", modelText = "", lastTool = "", bubbleMsg = "", error = null) }

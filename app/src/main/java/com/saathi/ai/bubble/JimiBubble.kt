@@ -1,523 +1,537 @@
 package com.saathi.ai.bubble
 
-import android.annotation.SuppressLint
+import android.animation.ValueAnimator
 import android.content.Context
+import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.PixelFormat
-import android.graphics.RadialGradient
 import android.graphics.RectF
+import android.graphics.RadialGradient
 import android.graphics.Shader
+import android.graphics.SweepGradient
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.saathi.ai.MainActivity
+import com.saathi.ai.data.SecurePrefs
 import com.saathi.ai.live.Phase
 import com.saathi.ai.live.SessionHub
+import com.saathi.ai.live.SessionState
+import com.saathi.ai.ui.theme.JimiThemes
+import com.saathi.ai.ui.theme.withAccent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlin.math.hypot
+import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * The floating JIMI orb.
+ * The floating Jimi — completely redrawn, no emoji, no image assets.
  *
- * Design goals that the first version missed:
- *  • it has to look like the app, not like a debug circle — same palette, same glow
- *  • it has to *tell* you what is happening — a live caption pill that grows out of
- *    the orb, with the current action in Bangla
- *  • it has to be pleasant to grab — the pill expands on drag, snaps to the nearest
- *    edge, remembers where you left it, and never blocks a big part of the screen
+ * Every pixel here is drawn in code ([OrbView] uses gradients and arcs; the panel
+ * is a clipped column), which is what makes it follow the active theme instantly
+ * and stay crisp on any density.
+ *
+ * Behaviours the user asked for, one by one:
+ *  • **Transcript rises inside the bubble.** Lines are added at the bottom of a
+ *    fixed-height, clipped column; when the column is full the whole strip slides up
+ *    by one line and the oldest line disappears *behind the clip* — text never
+ *    escapes the bubble and never covers the screen.
+ *  • **Draggable anywhere.** Move it with a finger; the exact position is stored in
+ *    [SecurePrefs.bubbleX]/[bubbleY] and restored next time. A tap (no movement)
+ *    still opens the app, so the gesture does not steal the shortcut.
+ *  • **Auto show / auto hide.** [BubbleService.autoShow] is called when background
+ *    work starts, [BubbleService.autoHide] when the app comes to the foreground, so
+ *    the bubble is there while Jimi works and gone while you are looking at Jimi.
+ *  • **Live task progress.** The outer arc is the to-do board percentage and the
+ *    panel prints the runner's current step, so background work is visible.
  */
 class JimiBubble(private val context: Context) {
 
     private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val handler = Handler(Looper.getMainLooper())
+    private val prefs = SecurePrefs(context)
+    private val palette = JimiThemes.get(prefs.themeId).withAccent(prefs.accentOverride).palette
 
     private var root: FrameLayout? = null
-    private var orb: OrbView? = null
-    private var caption: TextView? = null
-    private var pill: LinearLayout? = null
-
     private var params: WindowManager.LayoutParams? = null
-    private var captionParams: WindowManager.LayoutParams? = null
 
-    private var lastCaption = ""
-    private var collapseRunnable: Runnable? = null
+    private lateinit var orb: OrbView
+    private lateinit var panel: FrameLayout
+    private lateinit var strip: LinearLayout
+
+    private var scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var collector: Job? = null
+    private var collapseJob: Job? = null
+
+    private var expanded = false
+    private val lineHeight by lazy { dp(19) }
+    private val maxLines = 3
 
     val isShowing: Boolean get() = root != null
 
-    // ---------------------------------------------------------------- lifecycle
+    // ------------------------------------------------------------------ window
 
-    @SuppressLint("ClickableViewAccessibility")
     fun show() {
         if (isShowing) return
-        val palette = BubblePalette.from(context)
+        if (!android.provider.Settings.canDrawOverlays(context)) return
+        // hide() cancels the scope; a re-shown instance needs a fresh one
+        if (!scope.isActive) scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-        val frame = FrameLayout(context)
-        val orbView = OrbView(context, palette)
-        val size = dp(64)
-        frame.addView(orbView, FrameLayout.LayoutParams(size, size))
+        orb = OrbView(context).apply {
+            setColors(palette.glowA.toArgb(), palette.glowB.toArgb(), palette.accent.toArgb())
+        }
+        panel = FrameLayout(context).apply {
+            clipChildren = true
+            clipToPadding = true
+            visibility = View.GONE
+            background = GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat()
+                setColor(0xCC0A0D1C.toInt())
+                setStroke(dp(1), 0x1CFFFFFF)
+            }
+        }
+        strip = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.BOTTOM
+            setPadding(dp(11), dp(7), dp(11), dp(7))
+        }
+        panel.addView(
+            strip,
+            FrameLayout.LayoutParams(dp(196), lineHeight * maxLines + dp(14))
+        )
 
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        row.addView(orb, LinearLayout.LayoutParams(dp(50), dp(50)))
+        row.addView(panel, LinearLayout.LayoutParams(dp(196), lineHeight * maxLines + dp(14)))
+
+        val frame = FrameLayout(context).apply {
+            addView(row, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT
+            ))
+        }
+
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
         val lp = WindowManager.LayoutParams(
-            size, size,
-            overlayType(),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = BubblePalette.from(context).savedX
-            y = BubblePalette.from(context).savedY
+            x = restoredX()
+            y = restoredY()
         }
+        params = lp
 
+        attachDrag(frame, lp)
+
+        runCatching { wm.addView(frame, lp) }
+        root = frame
+        observe()
+        orb.start()
+    }
+
+    fun hide() {
+        collector?.cancel()
+        collector = null
+        collapseJob?.cancel()
+        collapseJob = null
+        scope.cancel()
+        runCatching { orb.stop() }
+        runCatching { root?.let { wm.removeView(it) } }
+        root = null
+        params = null
+    }
+
+    private fun restoredX(): Int {
+        val saved = prefs.bubbleX
+        val w = context.resources.displayMetrics.widthPixels
+        return if (saved in 0..w) saved else w - dp(66)
+    }
+
+    private fun restoredY(): Int {
+        val saved = prefs.bubbleY
+        val h = context.resources.displayMetrics.heightPixels
+        return if (saved in 0..h) saved else (h * 0.38f).toInt()
+    }
+
+    // -------------------------------------------------------------------- drag
+
+    private fun attachDrag(view: View, lp: WindowManager.LayoutParams) {
+        var downX = 0f
+        var downY = 0f
         var startX = 0
         var startY = 0
-        var touchX = 0f
-        var touchY = 0f
         var moved = false
+        var downAt = 0L
 
-        frame.setOnTouchListener { _, event ->
-            when (event.action) {
+        view.setOnTouchListener { _, e ->
+            when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    downX = e.rawX
+                    downY = e.rawY
                     startX = lp.x
                     startY = lp.y
-                    touchX = event.rawX
-                    touchY = event.rawY
                     moved = false
-                    orbView.isPressedNow = true
+                    downAt = System.currentTimeMillis()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - touchX
-                    val dy = event.rawY - touchY
-                    if (hypot(dx, dy) > 12f) moved = true
+                    val dx = (e.rawX - downX).toInt()
+                    val dy = (e.rawY - downY).toInt()
+                    if (abs(dx) > dp(4) || abs(dy) > dp(4)) moved = true
                     if (moved) {
-                        lp.x = (startX + dx).toInt()
-                        lp.y = (startY + dy).toInt()
-                        runCatching { wm.updateViewLayout(frame, lp) }
+                        val maxX = context.resources.displayMetrics.widthPixels - dp(46)
+                        val maxY = context.resources.displayMetrics.heightPixels - dp(60)
+                        lp.x = (startX + dx).coerceIn(0, maxX)
+                        lp.y = (startY + dy).coerceIn(dp(24), maxY)
+                        runCatching { wm.updateViewLayout(view, lp) }
                     }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    orbView.isPressedNow = false
                     if (moved) {
-                        snapToEdge(lp, size)
-                        runCatching { wm.updateViewLayout(frame, lp) }
-                        BubblePalette.from(context).savePosition(lp.x, lp.y)
-                    } else {
-                        onClick()
+                        // remember exactly where the user left it
+                        prefs.bubbleX = lp.x
+                        prefs.bubbleY = lp.y
+                    } else if (System.currentTimeMillis() - downAt < 400) {
+                        openApp()
                     }
                     true
                 }
                 else -> false
             }
         }
-
-        runCatching {
-            wm.addView(frame, lp)
-            root = frame
-            orb = orbView
-            params = lp
-        }
-        startObserving()
-    }
-
-    private fun onClick() {
-        val state = SessionHub.state.value
-        when (state.phase) {
-            Phase.IDLE, Phase.ENDED, Phase.ERROR -> {
-                SessionHub.update { it.copy(phase = Phase.CONNECTING) }
-                runCatching {
-                    val intent = android.content.Intent(
-                        context, com.saathi.ai.capture.LiveSessionService::class.java
-                    )
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(intent)
-                    } else {
-                        context.startService(intent)
-                    }
-                }
-                setCaption("Jimi জাগছে…")
-            }
-            else -> openApp()
-        }
     }
 
     private fun openApp() {
         runCatching {
             context.startActivity(
-                android.content.Intent(context, com.saathi.ai.MainActivity::class.java)
-                    .addFlags(
-                        android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                            android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    )
+                Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                }
             )
         }
     }
 
-    fun hide() {
-        collapseRunnable?.let { handler.removeCallbacks(it) }
-        stopObserving()
-        runCatching { caption?.let { wm.removeView(it) } }
-        runCatching { root?.let { wm.removeView(it) } }
-        caption = null
-        root = null
-        orb = null
-        params = null
-        captionParams = null
+    // ------------------------------------------------------------------- state
+
+    private fun observe() {
+        collector?.cancel()
+        collector = scope.launch {
+            SessionHub.state.collectLatest { render(it) }
+        }
     }
 
-    // ---------------------------------------------------------------- caption
+    private fun render(st: SessionState) {
+        if (root == null) return
+        orb.phase = st.phase
+        orb.level = st.level
+        orb.progress = st.taskProgress
 
-    /** Shows what Jimi is doing, in a compact pill next to the orb. */
+        val line = when {
+            st.taskText.isNotBlank() -> st.taskText
+            st.error != null -> st.error!!
+            st.modelText.isNotBlank() -> st.modelText
+            st.userText.isNotBlank() -> st.userText
+            st.lastTool.isNotBlank() -> st.lastTool
+            else -> ""
+        }
+        if (line.isNotBlank() && line != lastLine) {
+            lastLine = line
+            val color = when {
+                st.error != null -> 0xFFFF8A9C.toInt()
+                st.taskText.isNotBlank() -> palette.secondary.toArgb()
+                st.userText.isNotBlank() && st.modelText.isBlank() -> 0xFFB9C4E8.toInt()
+                else -> 0xFFEDEFFB.toInt()
+            }
+            addLine(line, color)
+        }
+        if (st.phase == Phase.IDLE || st.phase == Phase.ENDED) scheduleCollapse()
+    }
+
+    private var lastLine = ""
+
+    // ------------------------------------------------------- rising transcript
+
+    /**
+     * Adds one line at the bottom. When the column is full, the strip slides up by
+     * exactly one line and the oldest view is dropped after the animation, so the
+     * text visibly rises and vanishes *inside* the bubble.
+     */
+    private fun addLine(text: String, color: Int) {
+        if (root == null) return
+        if (prefs.bubbleStyle == "orb") return
+        expand()
+
+        val tv = TextView(context).apply {
+            this.text = text.take(120)
+            setTextColor(color)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, lineHeight
+            )
+        }
+        strip.addView(tv)
+
+        while (strip.childCount > maxLines + 1) strip.removeViewAt(0)
+
+        if (strip.childCount > maxLines) {
+            strip.animate().cancel()
+            strip.translationY = 0f
+            strip.animate()
+                .translationY(-lineHeight.toFloat())
+                .setDuration(320)
+                .withEndAction {
+                    if (strip.childCount > 0) strip.removeViewAt(0)
+                    strip.translationY = 0f
+                }
+                .start()
+        }
+        scheduleCollapse()
+    }
+
+    /** External caption entry point, kept for BubbleService compatibility. */
     fun setCaption(text: String) {
-        val clean = text.trim().take(70)
-        if (clean.isEmpty() || clean == lastCaption) return
-        lastCaption = clean
+        if (text.isBlank()) return
+        addLine(text, 0xFFEDEFFB.toInt())
+    }
 
-        handler.post {
-            val frame = root ?: return@post
-            val palette = BubblePalette.from(context)
-            if (caption == null) {
-                val tv = TextView(context).apply {
-                    setTextColor(Color.WHITE)
-                    textSize = 11.5f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                    maxLines = 2
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    setPadding(dp(14), dp(9), dp(14), dp(9))
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(18).toFloat()
-                        setColor(Color.argb(232, 14, 18, 32))
-                        setStroke(dp(1), Color.argb(90, Color.red(palette.primary), Color.green(palette.primary), Color.blue(palette.primary)))
-                    }
-                }
-                val lp = WindowManager.LayoutParams(
-                    WindowManager.LayoutParams.WRAP_CONTENT,
-                    WindowManager.LayoutParams.WRAP_CONTENT,
-                    overlayType(),
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                    PixelFormat.TRANSLUCENT
-                ).apply {
-                    gravity = Gravity.TOP or Gravity.START
-                }
-                caption = tv
-                captionParams = lp
-                runCatching { wm.addView(tv, lp) }
-            }
-            caption?.text = clean
-            positionCaption()
+    /** Background task progress line + ring. */
+    fun setTask(text: String, progress: Int) {
+        orb.progress = progress.coerceIn(0, 100)
+        if (text.isNotBlank()) addLine(text, palette.secondary.toArgb())
+    }
 
-            // auto-collapse the text after a while so the screen stays clean
-            collapseRunnable?.let { handler.removeCallbacks(it) }
-            collapseRunnable = Runnable {
-                runCatching {
-                    (caption?.layoutParams as? WindowManager.LayoutParams)?.let {
-                        caption?.alpha = 0f
-                    }
-                }
-            }.also { handler.postDelayed(it, 6000) }
-            caption?.alpha = 1f
+    private fun expand() {
+        if (expanded) return
+        expanded = true
+        panel.visibility = View.VISIBLE
+        panel.alpha = 0f
+        panel.animate().alpha(1f).setDuration(220).start()
+    }
+
+    private fun scheduleCollapse() {
+        collapseJob?.cancel()
+        collapseJob = scope.launch {
+            kotlinx.coroutines.delay(7_000)
+            if (!expanded) return@launch
+            expanded = false
+            panel.animate().alpha(0f).setDuration(260).withEndAction {
+                panel.visibility = View.GONE
+            }.start()
         }
     }
 
-    private fun positionCaption() {
-        val lp = params ?: return
-        val clp = captionParams ?: return
-        val tv = caption ?: return
-        val orbSize = dp(64)
-        val screenW = context.resources.displayMetrics.widthPixels
-        val onLeft = lp.x < screenW / 2
-        tv.measure(
-            View.MeasureSpec.makeMeasureSpec(screenW - dp(140), View.MeasureSpec.AT_MOST),
-            View.MeasureSpec.makeMeasureSpec(dp(120), View.MeasureSpec.AT_MOST)
-        )
-        val w = tv.measuredWidth
-        clp.x = if (onLeft) lp.x + orbSize + dp(6) else lp.x - w - dp(6)
-        clp.y = lp.y + (orbSize - tv.measuredHeight) / 2
-        runCatching { wm.updateViewLayout(tv, clp) }
-    }
+    private fun dp(v: Int): Int = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), context.resources.displayMetrics
+    ).toInt()
 
-    private fun snapToEdge(lp: WindowManager.LayoutParams, size: Int) {
-        val dm = context.resources.displayMetrics
-        val margin = dp(8)
-        lp.x = lp.x.coerceIn(margin, dm.widthPixels - size - margin)
-        lp.y = lp.y.coerceIn(dp(40), dm.heightPixels - size - dp(120))
-        // magnetise horizontally to the nearer edge, keeping the vertical spot
-        lp.x = if (lp.x + size / 2 < dm.widthPixels / 2) dp(10) else dm.widthPixels - size - dp(10)
-        positionCaption()
-    }
+    // -------------------------------------------------------------------- orb
 
-    // ---------------------------------------------------------------- session stream
+    /**
+     * The orb, drawn entirely with shaders — no bitmaps, no emoji.
+     *
+     * Layers, back to front: soft radial glow, a rotating sweep (the "thinking"
+     * motion), a level arc that follows the microphone, and a thin outer arc that is
+     * the to-do board progress. Phase decides the colour pair and the pulse speed.
+     */
+    class OrbView(context: Context) : View(context) {
 
-    private var observeJob: kotlinx.coroutines.Job? = null
-    private val scope = kotlinx.coroutines.CoroutineScope(
-        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main
-    )
-
-    private fun startObserving() {
-        observeJob = scope.launch {
-            SessionHub.state.collect { st ->
-                orb?.phase = st.phase
-                orb?.level = st.level
-
-                val captionText = when {
-                    st.bubbleMsg.isNotBlank() -> st.bubbleMsg
-                    st.lastTool.isNotBlank() -> toolLabel(st.lastTool)
-                    else -> when (st.phase) {
-                        Phase.LISTENING -> "শুনছি…"
-                        Phase.THINKING -> "ভাবছি…"
-                        Phase.SPEAKING -> st.modelText.take(60)
-                        Phase.CONNECTING -> "সংযোগ হচ্ছে…"
-                        Phase.RECONNECTING -> "আবার জোড়া লাগাচ্ছি…"
-                        else -> ""
-                    }
-                }
-                if (captionText.isNotBlank()) setCaption(captionText)
-            }
+        private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val sweepPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val levelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
         }
-    }
-
-    private fun stopObserving() {
-        observeJob?.cancel()
-        observeJob = null
-    }
-
-    private fun toolLabel(tool: String): String = when (tool) {
-        "open_app" -> "অ্যাপ খুলছি…"
-        "open_url", "open_web" -> "ওয়েবসাইট খুলছি…"
-        "search_youtube", "play_on_youtube", "open_youtube_and_search_play" -> "ইউটিউবে খুঁজছি…"
-        "read_screen" -> "স্ক্রিন পড়ছি…"
-        "screen_tap", "screen_tap_at", "long_press" -> "ট্যাপ করছি…"
-        "screen_scroll" -> "স্ক্রল করছি…"
-        "screen_type" -> "লিখছি…"
-        "screen_zoom" -> "জুম করছি…"
-        "call_number", "call_contact" -> "কল দিচ্ছি…"
-        "send_sms" -> "মেসেজ পাঠাচ্ছি…"
-        "read_recent_sms", "read_call_log", "read_contacts" -> "তথ্য দেখছি…"
-        "open_camera", "take_photo" -> "ক্যামেরা…"
-        "latest_photos" -> "ছবি খুঁজছি…"
-        "upi_pay", "upi_scan" -> "পেমেন্ট স্ক্রিন…"
-        "open_weather" -> "আবহাওয়া দেখছি…"
-        "copy_text", "paste_text", "write_clipboard", "read_clipboard" -> "ক্লিপবোর্ড…"
-        "medicine_reminder" -> "রিমাইন্ডার সেট করছি…"
-        "remember", "recall" -> "মনে রাখছি…"
-        else -> "কাজ করছি…"
-    }
-
-    // ---------------------------------------------------------------- helpers
-
-    private fun overlayType(): Int =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
+        private val progressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
         }
+        private val rect = RectF()
 
-    private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
-
-    // ---------------------------------------------------------------- the orb itself
-
-    private class OrbView(
-        context: Context,
-        private val palette: BubblePalette
-    ) : View(context) {
+        private var colorA = 0xFF7C5CFF.toInt()
+        private var colorB = 0xFF35D6C8.toInt()
+        private var colorAccent = 0xFFFF7AC6.toInt()
 
         var phase: Phase = Phase.IDLE
             set(value) {
-                field = value
-                invalidate()
+                if (field != value) {
+                    field = value
+                    restartPulse()
+                    invalidate()
+                }
             }
-
         var level: Float = 0f
             set(value) {
-                field = value
+                field = value.coerceIn(0f, 1f)
                 invalidate()
             }
-
-        var isPressedNow = false
+        var progress: Int = 0
             set(value) {
-                field = value
+                field = value.coerceIn(0, 100)
                 invalidate()
             }
 
-        private val core = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-        private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val bar = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val path = Path()
-        private val oval = RectF()
-        private var t = 0f
+        private var spin = 0f
+        private var pulse = 0f
+        private var animator: ValueAnimator? = null
 
-        private val ticker = object : Runnable {
-            override fun run() {
-                t += 0.055f
-                invalidate()
-                postDelayed(this, 33)
+        fun setColors(a: Int, b: Int, accent: Int) {
+            colorA = a
+            colorB = b
+            colorAccent = accent
+            invalidate()
+        }
+
+        fun start() {
+            if (animator?.isRunning == true) return
+            animator = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 2600
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                addUpdateListener {
+                    val f = it.animatedFraction
+                    spin = f * 360f
+                    pulse = (1f - abs(f * 2f - 1f))
+                    invalidate()
+                }
+                start()
             }
         }
 
-        override fun onAttachedToWindow() {
-            super.onAttachedToWindow()
-            post(ticker)
+        fun stop() {
+            animator?.cancel()
+            animator = null
         }
 
-        override fun onDetachedFromWindow() {
-            removeCallbacks(ticker)
-            super.onDetachedFromWindow()
+        private fun restartPulse() {
+            val a = animator ?: return
+            a.duration = when (phase) {
+                Phase.LISTENING -> 1500
+                Phase.THINKING -> 900
+                Phase.SPEAKING -> 1100
+                Phase.CONNECTING, Phase.RECONNECTING -> 700
+                Phase.ERROR -> 2200
+                else -> 3000
+            }
         }
 
         override fun onDraw(canvas: Canvas) {
             val w = width.toFloat()
             val h = height.toFloat()
+            if (w <= 0f || h <= 0f) return
             val cx = w / 2f
             val cy = h / 2f
             val r = min(w, h) / 2f
-            val scale = if (isPressedNow) 0.9f else 1f
-            val mood = when (phase) {
-                Phase.LISTENING -> 1f
-                Phase.SPEAKING -> 1f
-                Phase.THINKING -> 0.6f
-                Phase.CONNECTING -> 0.4f
-                Phase.RECONNECTING -> 0.4f
-                Phase.ERROR -> 0.15f
-                else -> 0.35f
-            }
 
-            // outer bloom
-            glow.shader = RadialGradient(
-                cx, cy, r * (1.15f + 0.1f * level),
-                intArrayOf(
-                    alpha(palette.primary, 0.55f * mood + 0.18f),
-                    alpha(palette.secondary, 0.22f * mood),
-                    Color.TRANSPARENT
-                ),
-                floatArrayOf(0.35f, 0.72f, 1f),
+            val breathe = when (phase) {
+                Phase.IDLE, Phase.ENDED -> 0.90f + pulse * 0.03f
+                Phase.LISTENING -> 0.92f + pulse * 0.06f + level * 0.10f
+                Phase.THINKING -> 0.93f + pulse * 0.05f
+                Phase.SPEAKING -> 0.94f + pulse * 0.07f
+                Phase.CONNECTING, Phase.RECONNECTING -> 0.90f + pulse * 0.08f
+                Phase.ERROR -> 0.88f + pulse * 0.04f
+            }
+            val coreR = r * breathe
+
+            // outer glow
+            glowPaint.shader = RadialGradient(
+                cx, cy, r,
+                intArrayOf(withAlpha(colorA, 120), withAlpha(colorB, 40), Color.TRANSPARENT),
+                floatArrayOf(0.25f, 0.62f, 1f),
                 Shader.TileMode.CLAMP
             )
-            canvas.drawCircle(cx, cy, r * (1.15f + 0.1f * level), glow)
+            canvas.drawCircle(cx, cy, r, glowPaint)
 
-            // glass body
-            oval.set(cx - r * 0.86f * scale, cy - r * 0.86f * scale, cx + r * 0.86f * scale, cy + r * 0.86f * scale)
-            core.shader = RadialGradient(
-                cx - r * 0.3f, cy - r * 0.35f, r * 1.6f,
-                intArrayOf(
-                    alpha(palette.secondary, 0.95f),
-                    alpha(palette.primary, 0.92f),
-                    alpha(0xFF10152A.toInt(), 0.98f)
-                ),
-                floatArrayOf(0f, 0.55f, 1f),
+            // rotating sweep
+            val sweep = SweepGradient(
+                cx, cy,
+                intArrayOf(withAlpha(colorA, 0), colorA, colorB, withAlpha(colorB, 0)),
+                floatArrayOf(0f, 0.28f, 0.62f, 1f)
+            )
+            val m = android.graphics.Matrix()
+            m.postRotate(spin * (if (phase == Phase.THINKING) 2f else 1f), cx, cy)
+            sweep.setLocalMatrix(m)
+            sweepPaint.shader = sweep
+            canvas.drawCircle(cx, cy, coreR * 0.86f, sweepPaint)
+
+            // core
+            corePaint.shader = RadialGradient(
+                cx - coreR * 0.25f, cy - coreR * 0.3f, coreR,
+                intArrayOf(Color.WHITE, colorB, colorA),
+                floatArrayOf(0f, 0.45f, 1f),
                 Shader.TileMode.CLAMP
             )
-            canvas.drawCircle(cx, cy, r * 0.86f * scale, core)
+            canvas.drawCircle(cx, cy, coreR * 0.62f, corePaint)
 
-            // audio-reactive ring
-            val ringR = r * (0.94f + level * 0.10f)
-            ring.shader = null
-            ring.strokeWidth = r * 0.10f
-            ring.color = alpha(palette.accent, 0.75f * mood + 0.1f)
-            canvas.drawCircle(cx, cy, ringR, ring)
-
-            // 12 spokes that beat with the voice
-            bar.color = alpha(Color.WHITE, 0.55f)
-            bar.strokeWidth = r * 0.055f
-            bar.strokeCap = Paint.Cap.ROUND
-            val bars = 12
-            for (i in 0 until bars) {
-                val ang = (i.toFloat() / bars) * 6.2831f + t * 0.6f
-                val wobble = 0.55f + 0.45f * kotlin.math.sin(t * 2.2f + i * 0.9f)
-                val len = r * (0.06f + 0.22f * level * wobble * mood)
-                val sx = cx + kotlin.math.cos(ang) * ringR
-                val sy = cy + kotlin.math.sin(ang) * ringR
-                val ex = cx + kotlin.math.cos(ang) * (ringR + len)
-                val ey = cy + kotlin.math.sin(ang) * (ringR + len)
-                canvas.drawLine(sx, sy, ex, ey, bar)
+            // microphone level arc
+            if (level > 0.02f) {
+                levelPaint.strokeWidth = r * 0.09f
+                levelPaint.color = colorAccent
+                val inset = r * 0.20f
+                rect.set(cx - coreR + inset, cy - coreR + inset, cx + coreR - inset, cy + coreR - inset)
+                canvas.drawArc(rect, -90f, 360f * level, false, levelPaint)
             }
 
-            // little nucleus highlight
-            core.shader = null
-            core.color = alpha(Color.WHITE, 0.30f + 0.25f * mood)
-            canvas.drawCircle(cx - r * 0.22f, cy - r * 0.24f, r * 0.16f, core)
+            // to-do progress ring
+            if (progress > 0) {
+                progressPaint.strokeWidth = r * 0.075f
+                progressPaint.color = withAlpha(colorB, 235)
+                val inset = r * 0.06f
+                rect.set(cx - r + inset, cy - r + inset, cx + r - inset, cy + r - inset)
+                canvas.drawArc(rect, -90f, 3.6f * progress, false, progressPaint)
+            }
 
-            // drawing a subtle smile keeps it friendly at rest
-            if (mood < 0.5f) {
-                val smile = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    style = Paint.Style.STROKE
-                    strokeWidth = r * 0.07f
-                    strokeCap = Paint.Cap.ROUND
-                    color = alpha(Color.WHITE, 0.85f)
-                }
-                path.reset()
-                path.moveTo(cx - r * 0.26f, cy + r * 0.10f)
-                path.quadTo(cx, cy + r * 0.40f, cx + r * 0.26f, cy + r * 0.10f)
-                canvas.drawPath(path, smile)
+            // error tint
+            if (phase == Phase.ERROR) {
+                corePaint.shader = null
+                corePaint.color = withAlpha(0xFFFF5C7A.toInt(), 90)
+                canvas.drawCircle(cx, cy, coreR * 0.66f, corePaint)
             }
         }
 
-        private fun alpha(color: Int, a: Float): Int {
-            val al = (a.coerceIn(0f, 1f) * 255).toInt()
-            return Color.argb(al, Color.red(color), Color.green(color), Color.blue(color))
-        }
-    }
-
-    // ---------------------------------------------------------------- palette bridge
-
-    /** Reads the user's active theme without pulling Compose into the overlay. */
-    class BubblePalette(
-        val primary: Int,
-        val secondary: Int,
-        val accent: Int,
-        val savedX: Int,
-        val savedY: Int
-    ) {
-        var contextRef: Context? = null
-
-        fun savePosition(x: Int, y: Int) {
-            contextRef?.getSharedPreferences("jimi_bubble", Context.MODE_PRIVATE)
-                ?.edit()
-                ?.putInt("x", x)
-                ?.putInt("y", y)
-                ?.apply()
-        }
-
-        companion object {
-            private fun argb(c: androidx.compose.ui.graphics.Color): Int =
-                android.graphics.Color.argb(
-                    (c.alpha * 255f).toInt(),
-                    (c.red * 255f).toInt(),
-                    (c.green * 255f).toInt(),
-                    (c.blue * 255f).toInt()
-                )
-
-            fun from(context: Context): BubblePalette {
-                val spec = com.saathi.ai.ui.theme.JimiThemes.get(
-                    com.saathi.ai.data.SecurePrefs(context).themeId
-                )
-                val p = spec.palette
-                val sp = context.getSharedPreferences("jimi_bubble", Context.MODE_PRIVATE)
-                val dm = context.resources.displayMetrics
-                return BubblePalette(
-                    primary = argb(p.primary),
-                    secondary = argb(p.secondary),
-                    accent = argb(p.accent),
-                    savedX = sp.getInt("x", 20),
-                    savedY = sp.getInt("y", (dm.heightPixels * 0.62f).toInt())
-                ).also { it.contextRef = context }
-            }
-        }
+        private fun withAlpha(color: Int, alpha: Int): Int =
+            Color.argb(alpha.coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
     }
 }
+
+/** Compose Color → ARGB int, so the bubble can follow the active theme. */
+private fun androidx.compose.ui.graphics.Color.toArgb(): Int =
+    Color.argb(
+        (alpha * 255).toInt().coerceIn(0, 255),
+        (red * 255).toInt().coerceIn(0, 255),
+        (green * 255).toInt().coerceIn(0, 255),
+        (blue * 255).toInt().coerceIn(0, 255)
+    )

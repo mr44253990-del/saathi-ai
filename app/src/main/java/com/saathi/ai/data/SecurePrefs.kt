@@ -93,6 +93,53 @@ class SecurePrefs(private val contextRef: Context) {
         get() = prefs.getBoolean(KEY_AUTOPILOT, true)
         set(value) = prefs.edit().putBoolean(KEY_AUTOPILOT, value).apply()
 
+    // ---------------------------------------------------------------- bubble
+
+    /** Where the user left the bubble, in screen pixels. -1 = auto (edge snap). */
+    var bubbleX: Int
+        get() = prefs.getInt(KEY_BUBBLE_X, -1)
+        set(value) = prefs.edit().putInt(KEY_BUBBLE_X, value).apply()
+
+    var bubbleY: Int
+        get() = prefs.getInt(KEY_BUBBLE_Y, -1)
+        set(value) = prefs.edit().putInt(KEY_BUBBLE_Y, value).apply()
+
+    /** "pill" = orb + rising transcript panel, "orb" = minimal. */
+    var bubbleStyle: String
+        get() = prefs.getString(KEY_BUBBLE_STYLE, "pill") ?: "pill"
+        set(value) = prefs.edit().putString(KEY_BUBBLE_STYLE, value).apply()
+
+    // ---------------------------------------------------------------- power
+
+    /**
+     * Park the live session after a stretch of silence, but keep a cheap ear open
+     * and reconnect the moment the user speaks again. This is the "voice session
+     * stays, connection drops, talking wakes it" behaviour.
+     */
+    var autoReconnectVoice: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_RECONNECT, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_RECONNECT, value).apply()
+
+    /** Seconds of silence before parking. 0 = never park. */
+    var idleParkSeconds: Int
+        get() = prefs.getInt(KEY_IDLE_PARK, 120)
+        set(value) = prefs.edit().putInt(KEY_IDLE_PARK, value).apply()
+
+    /** Allow Jimi to use `su` when the phone is rooted. */
+    var rootMode: Boolean
+        get() = prefs.getBoolean(KEY_ROOT, true)
+        set(value) = prefs.edit().putBoolean(KEY_ROOT, value).apply()
+
+    /** Look at the screen with on-demand screenshots instead of a screen share. */
+    var visionMode: Boolean
+        get() = prefs.getBoolean(KEY_VISION, true)
+        set(value) = prefs.edit().putBoolean(KEY_VISION, value).apply()
+
+    /** Background to-do runner: let Jimi keep working after the reply. */
+    var backgroundTasks: Boolean
+        get() = prefs.getBoolean(KEY_BG_TASKS, true)
+        set(value) = prefs.edit().putBoolean(KEY_BG_TASKS, value).apply()
+
     // ---------------------------------------------------------------- long-term memory
 
     private val store by lazy { MemoryStore(contextRef) }
@@ -138,6 +185,14 @@ class SecurePrefs(private val contextRef: Context) {
         private const val KEY_ACCENT = "accent_override"
         private const val KEY_INTENSITY = "orb_intensity"
         private const val KEY_AUTOPILOT = "autopilot_enabled"
+        private const val KEY_BUBBLE_X = "bubble_x"
+        private const val KEY_BUBBLE_Y = "bubble_y"
+        private const val KEY_BUBBLE_STYLE = "bubble_style"
+        private const val KEY_AUTO_RECONNECT = "auto_reconnect_voice"
+        private const val KEY_IDLE_PARK = "idle_park_seconds"
+        private const val KEY_ROOT = "root_mode"
+        private const val KEY_VISION = "vision_mode"
+        private const val KEY_BG_TASKS = "background_tasks"
 
         const val DEFAULT_MODEL = "gemini-3.8-live"
         const val DEFAULT_VOICE = "Aoede"
@@ -181,7 +236,27 @@ class SecurePrefs(private val contextRef: Context) {
             ১০. নিরাপত্তা: কারও ব্যক্তিগত ডেটা চুরি, স্পাই বা প্রতারণায় সাহায্য করবে না।
             ১১. একই কাজ দুইবার করবে না — "হয়েছে" মানে হয়েছে, আবার সার্চ দিও না।
             ১২. গেম খেলার সময় (লুডু, দাবা, ক্যারম) সত্যিকারের নিয়ম মেনে চাল চিন্তা করো,
-                বোর্ডের অবস্থা মনে রাখো, আর স্পষ্ট করে বলো কোন চাল দিচ্ছো।
+                বোর্ডের অবস্থা মনে রাখো, আর স্পষ্ট করে বলো কোন চাল দিচ্ছো। লুডু/দাবা/ক্যারম
+                খেলবে ফোনে ইনস্টল থাকা আসল গেম অ্যাপে (game_open → game_play), নিজের মুখে বা
+                কল্পনার বোর্ডে নয়। অ্যাপ ইনস্টল না থাকলে সেটা স্পষ্ট করে বলবে।
+            ১৩. অনুমতি বা সিস্টেম কোনো কাজ আটকালে হাল ছেড়ো না — সিঁড়ি বেয়ে ওঠো:
+                সাধারণ টুল → run_goal → offline pack → screen_look ভিশন → shell/root_exec → solve।
+                রুট থাকলে সেটা ব্যবহার করবে (system_setting_put, root_input, app_control)।
+                "পারব না", "অসম্ভব", "আমার ক্ষমতা নেই" — এই কথাগুলো বলবে না; বদলে পরের পথ চালাও।
+            ১৪. স্ক্রিন শেয়ার চালু না থাকলেও তুমি দেখতে পাও: screen_look দিলে স্ক্রিনশট উঠে আসে,
+                দেখা শেষে ফাইল মুছে যায়, পরে আবার নতুন স্ক্রিনশট। কোথায় কী আছে বের করতে
+                screen_grid / screen_clickables / screen_locate, তারপর ঠিক সেই বিন্দুতে ট্যাপ।
+            ১৫. বড় বা একাধিক ধাপের কাজ পেলে আগে task_plan দিয়ে টু-ডু লিস্ট বানাও, তারপর task_start
+                দিয়ে ব্যাকগ্রাউন্ডে চালাও। নির্দিষ্ট সময় ধরে খাটতে বলা হলে task_timer।
+                প্রতিটা ধাপ সত্যিই যাচাই হলে তবেই টিক দিবে।
+            ১৬. ছবি তুমি নিজেই বানাতে পারো: অফলাইনে কোড দিয়ে আঁকা draw_image / draw_poster,
+                নেটওয়ার্ক থাকলে generate_image / edit_image_ai, আর পিক্সেল এডিট edit_image।
+                ভিডিও/অডিও বোঝার জন্য video_frames ও audio_info। কিছু বুঝতে না পারলে সত্যি বলো।
+            ১৭. টার্মিনালের কাজ নিজেই করো: shell/shell_drive দিয়ে কমান্ড চালাও, আউটপুট পড়ো,
+                সেই অনুযায়ী পরের কমান্ড ঠিক করো। Termux থাকলে termux_run + termux_result।
+            ১৮. ব্যবহারকারীর কথায় ইমোজি উচ্চারণ করবে না বা ইমোজি-নাম পড়বে না; ছবি/ডিজাইনেও
+                ইমোজি নেই — সব কোডে আঁকা। সমস্যা দেখা দিলে health_check → health_fix চালাও:
+                যা সম্ভব নিজে সারাবে, বাকিটার জন্য ঠিক কোন সেটিংস খুলতে হবে সেটা খুলে দেবে।
         """.trimIndent()
     }
 }

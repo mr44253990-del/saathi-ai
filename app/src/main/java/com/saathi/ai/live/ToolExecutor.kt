@@ -25,6 +25,15 @@ class ToolExecutor(private val context: Context) {
     private val media = MediaUnderstanding(context)
     private val prefs = SecurePrefs(context)
 
+    // v2 helpers. Lazy because most sessions never touch root, games or the editor,
+    // and constructing them eagerly would slow down every tool call.
+    private val term by lazy { com.saathi.ai.access.TerminalTools(context) }
+    private val games by lazy { com.saathi.ai.access.GameApps(context) }
+    private val health by lazy { com.saathi.ai.access.HealthInsights(context) }
+    private val editor by lazy { com.saathi.ai.media.ImageEditor(context) }
+    private val imageGen by lazy { com.saathi.ai.create.ImageGen(context) }
+    private val board by lazy { com.saathi.ai.task.TaskBoard(context) }
+
     /**
      * Repeated-call guard.
      *
@@ -91,7 +100,7 @@ class ToolExecutor(private val context: Context) {
                 "app_purpose" -> apps.purposeOf(a.str("package"))
                 // ---- files
                 "list_files" -> files.list(a.str("path"), a.int("limit", 25))
-                    .joinToString("\n") { (if (it.isDir) "📁 " else "📄 ") + it.name + (if (it.isDir) "" else "  " + files.humanSize(it.size)) }
+                    .joinToString("\n") { (if (it.isDir) "ফোল্ডার · " else "ফাইল · ") + it.name + (if (it.isDir) "" else "  " + files.humanSize(it.size)) }
                     .ifBlank { "ফোল্ডার খালি বা পড়া যাচ্ছে না" }
                 "find_file" -> files.find(a.str("query"))
                     .joinToString("\n") { it.path }
@@ -348,11 +357,307 @@ class ToolExecutor(private val context: Context) {
                     }
                 }
 
+
+                // ================================================================ v2
+                // ---- root bridge: the escalation path when a permission blocks work
+                "root_status" -> com.saathi.ai.access.RootBridge.status(context)
+                "root_exec" -> com.saathi.ai.access.RootBridge
+                    .exec(a.str("cmd"), a.int("timeout", 25000).toLong(), a.bool("root", true))
+                    .report()
+                "root_grant_self" -> com.saathi.ai.access.RootBridge.grantSelf(context)
+                "root_enable_accessibility" -> com.saathi.ai.access.RootBridge.enableAccessibility(context)
+                "root_default_assistant" -> com.saathi.ai.access.RootBridge.setDefaultAssistant(context)
+                "system_setting_put" -> com.saathi.ai.access.RootBridge
+                    .putSetting(a.str("namespace").ifBlank { "system" }, a.str("key"), a.str("value")).report()
+                "system_setting_get" -> com.saathi.ai.access.RootBridge
+                    .getSetting(a.str("namespace").ifBlank { "system" }, a.str("key"))
+                "root_input" -> {
+                    val rb = com.saathi.ai.access.RootBridge
+                    when (a.str("action")) {
+                        "tap" -> rb.inputTap(a.int("x", 0), a.int("y", 0)).report()
+                        "swipe" -> rb.inputSwipe(
+                            a.int("x1", 0), a.int("y1", 0), a.int("x2", 0), a.int("y2", 0), a.int("ms", 300)
+                        ).report()
+                        "text" -> rb.inputText(a.str("text")).report()
+                        "key" -> rb.inputKey(a.str("key")).report()
+                        else -> "action বলো: tap / swipe / text / key (রুট থাকলে অ্যাক্সেসিবিলিটি ছাড়াও ইনপুট দেওয়া যায়)"
+                    }
+                }
+                "root_clipboard" -> com.saathi.ai.access.RootBridge.setClipboard(a.str("text")).report()
+                "root_radio" -> {
+                    val rb = com.saathi.ai.access.RootBridge
+                    val on = a.bool("on", true)
+                    when (a.str("what")) {
+                        "wifi" -> rb.wifi(on).report()
+                        "data" -> rb.data(on).report()
+                        "airplane" -> rb.airplane(on).report()
+                        "torch" -> rb.torch(on).report()
+                        else -> "what বলো: wifi / data / airplane / torch"
+                    }
+                }
+                "app_control" -> {
+                    val rb = com.saathi.ai.access.RootBridge
+                    val pkg = a.str("package").ifBlank {
+                        com.saathi.ai.access.AppDirectory.resolve(context, a.str("name")) ?: ""
+                    }
+                    if (pkg.isBlank()) "অ্যাপের প্যাকেজ নাম পাওয়া যায়নি"
+                    else when (a.str("action")) {
+                        "uninstall" -> rb.uninstall(pkg).report()
+                        "freeze", "disable" -> rb.freeze(pkg).report()
+                        "unfreeze", "enable" -> rb.unfreeze(pkg).report()
+                        "clear" -> rb.clearData(pkg).report()
+                        "stop" -> rb.forceStop(pkg).report()
+                        else -> "action বলো: uninstall / freeze / unfreeze / clear / stop"
+                    }
+                }
+                "install_apk" -> com.saathi.ai.access.RootBridge.installApk(a.str("path")).report()
+                "system_info" -> {
+                    val rb = com.saathi.ai.access.RootBridge
+                    when (a.str("kind")) {
+                        "storage", "disk" -> rb.storage()
+                        "processes", "top" -> rb.topProcesses()
+                        "logcat", "logs" -> rb.logcat(a.int("lines", 60), a.str("filter").ifBlank { null })
+                        "props", "device" -> rb.props()
+                        else -> rb.props() + "\n" + rb.storage()
+                    }
+                }
+                "root_file" -> {
+                    val rb = com.saathi.ai.access.RootBridge
+                    if (a.str("action") == "write") rb.writeFile(a.str("path"), a.str("content")).report()
+                    else rb.readFile(a.str("path"), a.int("limit", 4000))
+                }
+
+                // ---- real terminal work (shell + Termux), read back and continue
+                "shell" -> term.shell(a.str("cmd"), a.int("timeout", 25000).toLong(), a.bool("root", true))
+                "shell_background" -> term.background(a.str("cmd"), a.str("tag").ifBlank { "job" })
+                "shell_job_output" -> term.jobOutput(a.int("id", -1), a.int("tail", 40))
+                "shell_jobs" -> term.listJobs()
+                "shell_drive" -> term.selfDrive(a.str("cmd"), a.int("rounds", 4))
+                "termux_run" -> term.runInTermux(
+                    a.str("cmd"), a.str("workdir").ifBlank { null }, a.bool("background", true)
+                )
+                "termux_result" -> term.termuxResult()
+                "termux_enable_external" -> term.enableTermuxExternalApps()
+                "termux_open" -> term.openTermux()
+                "termux_type" -> term.typeIntoTermux(a.str("cmd"), a.bool("enter", true))
+                "terminal_diagnostics" -> term.diagnostics()
+
+                // ---- vision without screen-share: shoot, look, delete, shoot again
+                "screen_look" -> com.saathi.ai.access.ScreenVision.look(
+                    context, a.bool("keep", false), a.str("note").ifBlank { null }
+                )
+                "screen_look_again" -> com.saathi.ai.access.ScreenVision.lookAgain(context)
+                "screen_grid" -> com.saathi.ai.access.ScreenVision.grid(context, a.int("cols", 4), a.int("rows", 6))
+                "screen_tap_cell" -> com.saathi.ai.access.ScreenVision.tapCell(
+                    context, a.str("cell"), a.int("cols", 4), a.int("rows", 6)
+                )
+                "screen_locate" -> {
+                    val p = com.saathi.ai.access.ScreenVision.locateByDump(a.str("label"))
+                    if (p == null) "«${a.str("label")}» স্ক্রিনে পাওয়া যায়নি — screen_clickables দিয়ে তালিকা দেখো"
+                    else "«${a.str("label")}» আছে x=${p.first}, y=${p.second} — gesture_tap বা human_tap দিয়ে চাপো"
+                }
+                "screen_clickables" -> com.saathi.ai.access.ScreenVision.clickableMap(a.int("limit", 40))
+                "screen_delete_shots" -> com.saathi.ai.access.ScreenVision.deleteAllShots(context)
+
+                // ---- app directory: hidden/renamed apps, widgets, deep links
+                "app_resolve" -> {
+                    val pkg = com.saathi.ai.access.AppDirectory.resolve(context, a.str("name"))
+                    if (pkg == null) "«${a.str("name")}» নামে কিছু ইনস্টল নেই — app_hidden/app_renamed দেখো, " +
+                        "নয়তো app_install দিয়ে Play Store খোলো"
+                    else "প্যাকেজ: $pkg"
+                }
+                "app_launch_any" -> com.saathi.ai.access.AppDirectory.launch(context, a.str("name"))
+                "app_list_all" -> com.saathi.ai.access.AppDirectory.summary(context)
+                "app_hidden" -> com.saathi.ai.access.AppDirectory.hidden(context)
+                "app_system_list" -> com.saathi.ai.access.AppDirectory.systemApps(context)
+                "app_renamed" -> com.saathi.ai.access.AppDirectory.suspiciousLabels(context)
+                "app_widgets" -> com.saathi.ai.access.AppDirectory.widgets(context)
+                "app_widget_instances" -> com.saathi.ai.access.AppDirectory.widgetInstances(context)
+                "app_deeplink" -> com.saathi.ai.access.AppDirectory.openDeepLink(context, a.str("kind"), a.str("payload"))
+                "app_install" -> com.saathi.ai.access.AppDirectory.install(context, a.str("name"))
+
+                // ---- the to-do board: plan it, run it in background, tick it
+                "task_list" -> board.boardText(a.int("limit", 24))
+                "task_add" -> board.add(a.str("title"), a.str("detail")).let { "তালিকায় যোগ করেছি: ${it.title} (id ${it.id})" }
+                "task_plan" -> {
+                    val arr = a.optJSONArray("steps")
+                    val steps = if (arr == null) emptyList() else (0 until arr.length()).map { arr.optString(it) }
+                    board.addPlan(steps.filter { it.isNotBlank() })
+                }
+                "task_update" -> {
+                    val st = when (a.str("status").lowercase()) {
+                        "done", "finished", "সম্পন্ন", "শেষ" -> com.saathi.ai.task.TaskBoard.Status.DONE
+                        "running", "চলছে" -> com.saathi.ai.task.TaskBoard.Status.RUNNING
+                        "failed", "ব্যর্থ" -> com.saathi.ai.task.TaskBoard.Status.FAILED
+                        "blocked", "আটকে" -> com.saathi.ai.task.TaskBoard.Status.BLOCKED
+                        else -> com.saathi.ai.task.TaskBoard.Status.PENDING
+                    }
+                    val t = board.update(a.str("id"), st, a.str("note"))
+                    if (t == null) "ওই আইডির কাজ খুঁজে পাইনি — task_list দেখো"
+                    else "টিক দিয়েছি: ${t.title} → ${t.status}"
+                }
+                "task_start" -> {
+                    if (!prefs.backgroundTasks) "ব্যাকগ্রাউন্ড টাস্ক সেটিংসে বন্ধ আছে — চালু করলে চালাব"
+                    else {
+                        com.saathi.ai.task.TaskRunnerService.start(context, a.str("id").ifBlank { null })
+                        "ব্যাকগ্রাউন্ড ওয়ার্কার চালু করেছি। নোটিফিকেশনে অগ্রগতি দেখাবে, কাজ শেষ হলে টিক পড়বে।"
+                    }
+                }
+                "task_timer" -> {
+                    val mins = a.int("minutes", 10).coerceIn(1, 60)
+                    com.saathi.ai.task.TaskRunnerService.workFor(context, a.str("goal"), mins * 60)
+                    "$mins মিনিট ধরে «${a.str("goal")}» নিয়ে কাজ করব — থামালে task_stop বলো।"
+                }
+                "task_stop" -> {
+                    com.saathi.ai.task.TaskRunnerService.stop(context)
+                    "ব্যাকগ্রাউন্ড ওয়ার্কার থামিয়েছি"
+                }
+                "task_clear" -> if (a.str("what") == "all") board.clearAll() else board.clearFinished()
+                "task_progress" -> board.progressText().ifBlank { "তালিকা খালি" }
+
+                // ---- the never-give-up solver
+                "solve" -> {
+                    val svc = JimiAccessibilityService.instance
+                    if (svc == null) "Accessibility বন্ধ — solve চলবে না, আগে চালু করো"
+                    else {
+                        val goal = a.str("goal")
+                        SessionHub.update { it.copy(taskText = goal) }
+                        val report = com.saathi.ai.access.Solver.runWithEscalation(context, svc, goal) { step ->
+                            SessionHub.update { it.copy(lastTool = step) }
+                        }
+                        val verdict = com.saathi.ai.access.Solver.classify(report)
+                        SessionHub.update {
+                            it.copy(taskText = "", taskProgress = if (verdict == com.saathi.ai.access.Solver.Verdict.DONE) 100 else it.taskProgress)
+                        }
+                        com.saathi.ai.access.Solver.oneLine(report) + "\n" + report.take(1500) +
+                            "\n" + com.saathi.ai.access.Solver.advice(report)
+                    }
+                }
+                "solve_alternative" -> {
+                    val svc = JimiAccessibilityService.instance
+                    if (svc == null) "Accessibility বন্ধ"
+                    else com.saathi.ai.access.Solver
+                        .runAlternative(context, svc, a.str("goal"), a.str("previous_report"))
+                        .take(1600)
+                }
+
+                // ---- drawing and editing: Jimi makes the picture itself
+                "draw_image" -> com.saathi.ai.create.ArtEngine.drawAndSave(
+                    context, a.str("prompt"), a.int("size", 1080)
+                )
+                "draw_poster" -> {
+                    val bmp = com.saathi.ai.create.ArtEngine.draw(a.str("prompt"), a.int("size", 1080))
+                    com.saathi.ai.create.ArtEngine.withText(bmp, a.str("text"))
+                    val dir = java.io.File(context.getExternalFilesDir(null) ?: context.filesDir, "art").apply { mkdirs() }
+                    val f = java.io.File(dir, "jimi-poster-${System.currentTimeMillis()}.png")
+                    val ok = runCatching {
+                        f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 95, it) }
+                    }.isSuccess
+                    bmp.recycle()
+                    if (ok) "পোস্টার বানিয়েছি: ${f.absolutePath}" else "এঁকেছি কিন্তু সেভ করা যায়নি"
+                }
+                "generate_image" -> imageGen.generate(a.str("prompt"), a.str("aspect").ifBlank { "1:1" })
+                "edit_image_ai" -> imageGen.edit(a.str("path"), a.str("instruction"))
+                "edit_image" -> editor.edit(a.str("path"), a.str("ops"))
+                "collage" -> {
+                    val arr = a.optJSONArray("paths")
+                    val paths = if (arr == null) listOf(a.str("path1"), a.str("path2"))
+                    else (0 until arr.length()).map { arr.optString(it) }
+                    editor.collage(paths.filter { it.isNotBlank() }, a.bool("vertical", false))
+                }
+                "set_wallpaper" -> {
+                    val bmp = media.loadBitmap(a.str("path"))
+                    if (bmp == null) "ছবি পড়া যায়নি: ${a.str("path")}"
+                    else runCatching {
+                        val wm = context.getSystemService(Context.WALLPAPER_SERVICE) as android.app.WallpaperManager
+                        if (a.str("which") == "lock") {
+                            wm.setBitmap(bmp, null, true, android.app.WallpaperManager.FLAG_LOCK)
+                        } else {
+                            wm.setBitmap(bmp)
+                        }
+                        bmp.recycle()
+                        "ওয়ালপেপার সেট করেছি"
+                    }.getOrElse { "ওয়ালপেপার সেট করা যায়নি: ${it.message}" }
+                }
+                "share_image_file" -> smart.shareImage(a.str("path"))
+
+                // ---- health check and self-repair
+                "health_check" -> health.report(a.bool("api", true))
+                "health_fix" -> health.selfFix(true)
+                "health_headline" -> health.headline()
+
+                // ---- games on the phone's own apps
+                "game_open" -> games.open(a.str("name"))
+                "game_play" -> games.play(a.str("name"), a.str("action").ifBlank { null })
+                "game_status" -> games.status()
+
+                // ---- restricted input fields: type, and if the field blocks IME,
+                //      clipboard + long-press + Paste (root clipboard when available)
+                "fill_field" -> fillField(a.str("label"), a.str("text"))
+                "paste_into" -> pasteInto(a.str("label"))
+
                 else -> "Unknown tool: $name"
             }
         } catch (t: Throwable) {
             "Error: ${t.message ?: t.javaClass.simpleName}"
         }
+    }
+
+    /**
+     * Types into a field that may block normal IME injection (banking apps, some
+     * WebView forms, secure fields). Order: focus → accessibility type → root input →
+     * clipboard + Paste menu. It always reports which route worked.
+     */
+    private fun fillField(label: String, text: String): String {
+        val svc = JimiAccessibilityService.instance
+            ?: return "Accessibility বন্ধ — ফিল্ডে লেখা যাবে না"
+        if (text.isBlank()) return "কী লিখবে সেটা বলো"
+
+        val bounds = if (label.isBlank()) null else svc.boundsOf(label)
+        if (label.isNotBlank() && bounds == null) {
+            return "«$label» নামের ফিল্ড স্ক্রিনে পাওয়া যায়নি। screen_look বা read_screen দিয়ে দেখে " +
+                "ঠিক লেবেল বলো।"
+        }
+        if (bounds != null) {
+            svc.gestures.humanTap(bounds.centerX().toFloat(), bounds.centerY().toFloat())
+            Thread.sleep(500)
+        }
+
+        if (svc.typeText(text)) return "ফিল্ডে লিখেছি${if (label.isBlank()) "" else " («$label»)"}"
+
+        val rootTyped = if (com.saathi.ai.access.RootBridge.available()) {
+            com.saathi.ai.access.RootBridge.inputText(text).ok
+        } else false
+        if (rootTyped) return "ফিল্ডে লিখেছি (রুট ইনপুট দিয়ে) — সাধারণ টাইপিং ব্লক ছিল"
+
+        // last resort: clipboard + the field's own Paste menu
+        val clipped = smart.copy(text)
+        if (bounds != null) {
+            svc.gestures.longPress(bounds.centerX().toFloat(), bounds.centerY().toFloat(), 720)
+        } else {
+            svc.gestures.longPress(svc.screenWidth() / 2f, svc.screenHeight() / 2f, 720)
+        }
+        Thread.sleep(700)
+        val pasted = svc.tapByText("Paste") || svc.tapByText("পেস্ট") ||
+            svc.tapByText("Paste as plain text")
+        return if (pasted) "পেস্ট মেনু থেকে বসিয়েছি ($clipped)"
+        else "এই ফিল্ড টাইপও নেয় না, পেস্ট মেনুও খোলেনি। টেক্সট ক্লিপবোর্ডে রেখেছি ($clipped) — " +
+            "তুমি একবার চেপে ধরে Paste চাপো, অথবা রুট থাকলে root_input(text) চেষ্টা করব।"
+    }
+
+    /** Pastes whatever is on the clipboard into a named field. */
+    private fun pasteInto(label: String): String {
+        val svc = JimiAccessibilityService.instance ?: return "Accessibility বন্ধ"
+        val bounds = if (label.isBlank()) null else svc.boundsOf(label)
+        if (label.isNotBlank() && bounds == null) return "«$label» ফিল্ড পাওয়া যায়নি"
+        val x = bounds?.centerX()?.toFloat() ?: svc.screenWidth() / 2f
+        val y = bounds?.centerY()?.toFloat() ?: svc.screenHeight() / 2f
+        svc.gestures.humanTap(x, y)
+        Thread.sleep(400)
+        svc.gestures.longPress(x, y, 720)
+        Thread.sleep(700)
+        val pasted = svc.tapByText("Paste") || svc.tapByText("পেস্ট") || svc.tapByText("Paste as plain text")
+        return if (pasted) "পেস্ট করেছি" else "পেস্ট মেনু খোলেনি — ক্লিপবোর্ডের লেখা: ${smart.paste()}"
     }
 
     private inline fun gesture(block: (com.saathi.ai.access.GestureEngine) -> Boolean): String {

@@ -15,7 +15,11 @@ data class SessionState(
     val error: String? = null,
     val model: String = "",
     val lastTool: String = "",
-    val bubbleMsg: String = ""
+    val bubbleMsg: String = "",
+    /** Live line from the background task runner, shown inside the bubble. */
+    val taskText: String = "",
+    /** 0..100 progress across the whole to-do board. */
+    val taskProgress: Int = 0
 )
 
 /**

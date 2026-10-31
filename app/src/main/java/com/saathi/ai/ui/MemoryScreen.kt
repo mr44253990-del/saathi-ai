@@ -98,7 +98,7 @@ fun MemoryScreen(
             }
 
             // ---------------------------------------------------- facts
-            Section("মনে রাখা কথা", "🧠") {
+            Section("মনে রাখা কথা", SaathiIcons.Brain) {
                 if (facts.isEmpty()) {
                     Hint("এখনো কিছু মনে নেই। কথা বলার সময় Jimi নিজেই সেভ করবে — অথবা নিচে লিখে যোগ করো।")
                 }
@@ -128,7 +128,7 @@ fun MemoryScreen(
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("✕", color = Color(0xFFFF8A9C), fontSize = 13.sp)
+                            Icon(SaathiIcons.Close, null, tint = Color(0xFFFF8A9C), modifier = Modifier.size(12.dp))
                         }
                     }
                 }
@@ -194,7 +194,7 @@ fun MemoryScreen(
             }
 
             // ---------------------------------------------------- reminders
-            Section("রিমাইন্ডার", "⏰") {
+            Section("রিমাইন্ডার", SaathiIcons.Timer) {
                 if (reminders.isEmpty()) {
                     Hint("কোনো রিমাইন্ডার নেই। Jimi-কে বলো: «সকাল ৮টায় নাপা খাওয়ার কথা মনে করিয়ে দিও»।")
                 }
@@ -223,14 +223,14 @@ fun MemoryScreen(
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("✕", color = Color(0xFFFF8A9C), fontSize = 13.sp)
+                            Icon(SaathiIcons.Close, null, tint = Color(0xFFFF8A9C), modifier = Modifier.size(12.dp))
                         }
                     }
                 }
             }
 
             // ---------------------------------------------------- chats
-            Section("চ্যাট হিস্টোরি", "💬") {
+            Section("চ্যাট হিস্টোরি", SaathiIcons.Chat) {
                 OutlinedTextField(
                     value = query,
                     onValueChange = {
@@ -277,7 +277,7 @@ fun MemoryScreen(
             }
 
             // ---------------------------------------------------- capabilities
-            Section("Jimi কী কী পারে", "⚡") {
+            Section("Jimi কী কী পারে", SaathiIcons.Bolt) {
                 CapabilityList()
             }
 
@@ -289,7 +289,7 @@ fun MemoryScreen(
 // ---------------------------------------------------------------- pieces
 
 @Composable
-private fun Section(title: String, emoji: String, content: @Composable () -> Unit) {
+private fun Section(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -300,7 +300,15 @@ private fun Section(title: String, emoji: String, content: @Composable () -> Uni
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(emoji, fontSize = 15.sp)
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Color.White.copy(alpha = 0.07f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, tint = jimi.secondary, modifier = Modifier.size(14.dp))
+            }
             Spacer(Modifier.width(8.dp))
             Text(title, color = jimi.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }

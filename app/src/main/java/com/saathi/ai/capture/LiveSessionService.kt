@@ -47,6 +47,22 @@ class LiveSessionService : Service(), LiveClient.Listener {
     private val toolPool = Executors.newSingleThreadExecutor()
 
     private var resumeHandle: String? = null
+
+    /**
+     * Idle parking: a silent session is closed on purpose and a cheap microphone
+     * energy gate ([com.saathi.ai.live.VoiceGate]) waits for speech. The moment
+     * someone talks, the session reconnects by itself — that is the
+     * "অনেকক্ষণ চুপ থাকলে ডিসকানেক্ট, বললেই আবার অটো কানেক্ট" setting.
+     */
+    private var parked = false
+    private var lastVoiceAt = System.currentTimeMillis()
+    private var gate: com.saathi.ai.live.VoiceGate? = null
+    private val idleCheck = object : Runnable {
+        override fun run() {
+            maybePark()
+            handler.postDelayed(this, 5000)
+        }
+    }
     private var reconnectAttempts = 0
     private val handler = Handler(Looper.getMainLooper())
     private var reconnectRunnable: Runnable? = null
@@ -67,6 +83,7 @@ class LiveSessionService : Service(), LiveClient.Listener {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         prefs = SecurePrefs(this)
         SessionHub.isServiceRunning = true
         createNotificationChannel()
@@ -138,9 +155,17 @@ class LiveSessionService : Service(), LiveClient.Listener {
 
     override fun onSetupComplete() {
         reconnectAttempts = 0
+        parked = false
+        lastVoiceAt = System.currentTimeMillis()
+        gate?.stop()
+        gate = null
         SessionHub.update { it.copy(phase = Phase.LISTENING, error = null, micOn = wantMic) }
         updateNotification(getString(R.string.status_listening))
         syncMic()
+        if (prefs.autoReconnectVoice && prefs.idleParkSeconds > 0) {
+            handler.removeCallbacks(idleCheck)
+            handler.postDelayed(idleCheck, 5000)
+        }
     }
 
     private var currentChatId: String? = null
@@ -153,6 +178,7 @@ class LiveSessionService : Service(), LiveClient.Listener {
     }
 
     override fun onInputTranscript(text: String) {
+        lastVoiceAt = System.currentTimeMillis()
         SessionHub.update { st ->
             val merged = merge(st.userText, text)
             st.copy(userText = merged, phase = if (st.phase == Phase.IDLE) Phase.LISTENING else st.phase)
@@ -164,6 +190,7 @@ class LiveSessionService : Service(), LiveClient.Listener {
     }
 
     override fun onTurnComplete() {
+        lastVoiceAt = System.currentTimeMillis()
         player?.flush()
 
         // Persist the exchange before clearing it — this is what fills the chat
@@ -245,7 +272,72 @@ class LiveSessionService : Service(), LiveClient.Listener {
 
     fun setMicEnabled(enabled: Boolean) {
         wantMic = enabled
+        if (enabled) lastVoiceAt = System.currentTimeMillis()
         syncMic()
+    }
+
+    /** Closes an idle connection and starts listening for the first words. */
+    private fun maybePark() {
+        if (parked || ending) return
+        val limit = prefs.idleParkSeconds
+        if (!prefs.autoReconnectVoice || limit <= 0) return
+        if (System.currentTimeMillis() - lastVoiceAt < limit * 1000L) return
+        if (SessionHub.state.value.phase == Phase.SPEAKING) return
+
+        parked = true
+        mic?.stop()          // release the mic so the gate can own it
+        client?.close()
+        client = null
+        SessionHub.update {
+            it.copy(
+                phase = Phase.IDLE, micOn = false, level = 0f,
+                bubbleMsg = "চুপ আছি — তুমি বললেই আবার যুক্ত হচ্ছি"
+            )
+        }
+        updateNotification("পার্ক করা · বললেই আবার শুনব")
+        gate = com.saathi.ai.live.VoiceGate(this) {
+            handler.post { resumeFromPark() }
+        }.also { it.start() }
+        if (gate?.isRunning != true) {
+            // Microphone unavailable — do not pretend to be waiting.
+            parked = false
+            updateNotification(getString(R.string.status_error))
+        }
+    }
+
+    /** Re-opens the session the instant speech energy is detected. */
+    private fun resumeFromPark() {
+        if (!parked || ending) return
+        parked = false
+        gate?.stop()
+        gate = null
+        lastVoiceAt = System.currentTimeMillis()
+        handler.removeCallbacks(idleCheck)
+        SessionHub.update { it.copy(phase = Phase.CONNECTING, error = null) }
+        updateNotification(getString(R.string.status_reconnecting))
+        connect()
+        handler.postDelayed(idleCheck, 8000)
+    }
+
+    /** Called from Settings: toggling the option re-arms or disarms parking. */
+    fun setAutoReconnect(enabled: Boolean) {
+        if (enabled) {
+            lastVoiceAt = System.currentTimeMillis()
+            if (client != null && !parked) {
+                handler.removeCallbacks(idleCheck)
+                handler.postDelayed(idleCheck, 5000)
+            } else if (parked) {
+                resumeFromPark()
+            }
+        } else {
+            handler.removeCallbacks(idleCheck)
+            gate?.stop()
+            gate = null
+            if (parked) {
+                parked = false
+                connect()
+            }
+        }
     }
 
     private fun syncMic() {
@@ -300,7 +392,11 @@ class LiveSessionService : Service(), LiveClient.Listener {
 
     private fun teardown() {
         reconnectRunnable?.let { handler.removeCallbacks(it) }
+        handler.removeCallbacks(idleCheck)
         handler.removeCallbacksAndMessages(null)
+        gate?.stop()
+        gate = null
+        parked = false
         mic?.stop()
         mic = null
         player?.stop()
@@ -318,6 +414,7 @@ class LiveSessionService : Service(), LiveClient.Listener {
 
     override fun onDestroy() {
         runCatching { teardown() }
+        instance = null
         super.onDestroy()
     }
 
@@ -463,6 +560,11 @@ class LiveSessionService : Service(), LiveClient.Listener {
     }
 
     companion object {
+        /** Lets Settings toggle live behaviour (auto-reconnect) without restarting the service. */
+        @Volatile
+        var instance: LiveSessionService? = null
+            private set
+
         private const val CHANNEL_ID = "saathi_session"
         private const val NOTIF_ID = 4242
         private const val MAX_TRANSCRIPT_CHARS = 1_400

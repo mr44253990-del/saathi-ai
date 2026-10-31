@@ -299,11 +299,11 @@ object OfflinePacks {
 
         val head = when {
             found.isNotEmpty() && failed == 0 ->
-                "✅ «${pack.bangla}» হয়ে গেছে — স্ক্রিনে মিল: ${found.joinToString(", ")}"
+                "সফল: «${pack.bangla}» হয়ে গেছে — স্ক্রিনে মিল: ${found.joinToString(", ")}"
             found.isNotEmpty() ->
-                "⚠️ «${pack.bangla}» বেশিরভাগ হয়েছে, কিন্তু ${failed}টি ধাপ ঠিকমতো বসেনি। স্ক্রিনে মিল: ${found.joinToString(", ")}"
+                "আংশিক: «${pack.bangla}» বেশিরভাগ হয়েছে, কিন্তু ${failed}টি ধাপ ঠিকমতো বসেনি। স্ক্রিনে মিল: ${found.joinToString(", ")}"
             else ->
-                "❌ «${pack.bangla}» শেষ হয়নি — স্ক্রিনে প্রমাণ পাওয়া যায়নি। যা করেছি তার রিপোর্ট নিচে।"
+                "ব্যর্থ: «${pack.bangla}» শেষ হয়নি — স্ক্রিনে প্রমাণ পাওয়া যায়নি। যা করেছি তার রিপোর্ট নিচে।"
         }
         val missing = proof.filter { it.isNotBlank() && !screen.contains(it.lowercase()) }
         val tail = if (missing.isNotEmpty()) "\nস্ক্রিনে এখনো নেই: ${missing.joinToString(", ")}" else ""

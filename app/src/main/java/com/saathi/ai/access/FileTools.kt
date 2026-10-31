@@ -176,6 +176,62 @@ class FileTools(private val context: Context) {
         }
     }
 
+    /**
+     * Opens a file **directly** — this is what the in-app manager was missing.
+     *
+     * Order of attempts, each one honest about its result:
+     *  1. ACTION_VIEW with the exact MIME type through our FileProvider,
+     *  2. the same with `*//*` for exotic types,
+     *  3. ACTION_SEND chooser (some viewers only accept a share),
+     *  4. the system Files app, so at least the folder is on screen.
+     * A directory is opened as a folder view instead.
+     */
+    fun open(path: String): String {
+        val f = File(path)
+        if (!f.exists()) return "ফাইল পাওয়া যায়নি: $path"
+        if (f.isDirectory) {
+            val kids = f.listFiles()?.size ?: 0
+            return openInFilesApp(f.absolutePath) + " (ফোল্ডার, $kids টি আইটেম)"
+        }
+        val uri: Uri = try {
+            androidx.core.content.FileProvider.getUriForFile(
+                context, context.packageName + ".fileprovider", f
+            )
+        } catch (t: Throwable) {
+            Uri.fromFile(f)
+        }
+        val mime = guessMime(f.name)
+
+        for (type in listOf(mime, "*/*")) {
+            val ok = runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, type)
+                        addFlags(
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_ACTIVITY_NEW_TASK
+                        )
+                    }
+                )
+            }.isSuccess
+            if (ok) return "খুলেছি: ${f.name} ($type)"
+        }
+
+        val shared = runCatching {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(
+                Intent.createChooser(send, "খোলো").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }.isSuccess
+        return if (shared) "সরাসরি খোলার অ্যাপ নেই — কোন অ্যাপে খুলবে বেছে নাও: ${f.name}"
+        else "এই ফাইল খোলা গেল না (${f.name}) — ফাইলের জন্য অ্যাপ ইনস্টল নেই। " +
+            openInFilesApp(f.parent)
+    }
+
     /** Opens the system Files app at a folder — then accessibility takes over. */
     fun openInFilesApp(hint: String?): String {
         val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -268,13 +324,37 @@ class FileTools(private val context: Context) {
         return String.format(Locale.US, "%.1f GB", mb / 1024.0)
     }
 
-    private fun guessMime(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+    /** MIME by extension — drives both "open" and "share". */
+    fun guessMime(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
         "jpg", "jpeg" -> "image/jpeg"
         "png" -> "image/png"
+        "webp" -> "image/webp"
+        "gif" -> "image/gif"
+        "bmp" -> "image/bmp"
         "mp4" -> "video/mp4"
+        "mkv" -> "video/x-matroska"
+        "webm" -> "video/webm"
+        "3gp" -> "video/3gpp"
+        "avi" -> "video/x-msvideo"
         "mp3" -> "audio/mpeg"
+        "m4a" -> "audio/mp4"
+        "wav" -> "audio/wav"
+        "ogg", "opus" -> "audio/ogg"
+        "flac" -> "audio/flac"
+        "aac" -> "audio/aac"
         "pdf" -> "application/pdf"
-        "txt" -> "text/plain"
+        "txt", "log", "md" -> "text/plain"
+        "csv" -> "text/csv"
+        "json" -> "application/json"
+        "html", "htm" -> "text/html"
+        "doc" -> "application/msword"
+        "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        "xls" -> "application/vnd.ms-excel"
+        "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        "ppt" -> "application/vnd.ms-powerpoint"
+        "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        "zip" -> "application/zip"
+        "apk" -> "application/vnd.android.package-archive"
         else -> "*/*"
     }
 }

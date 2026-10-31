@@ -44,6 +44,23 @@
     <!-- Floating bubble -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- Terminal work. RUN_COMMAND is Termux's own plugin permission: it lets Jimi
+         execute a command inside Termux (where a real shell, python, ffmpeg, git live)
+         and get stdout/stderr back through a PendingIntent. The user still has to set
+         allow-external-apps=true in Termux once, which Jimi explains and can do itself
+         when root is available. -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
+    <!-- Activity recognition: used only to know when the phone is idle/moving so the
+         voice gate and background worker behave sensibly. -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+
+    <!-- Finding hidden/renamed system apps and widgets needs the full package list;
+         the <queries> block below only covers the popular ones. -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
     <uses-feature
         android:name="android.hardware.camera.any"
         android:required="false" />
@@ -189,6 +206,23 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!-- Background task worker: grinds through the to-do list and the timer mode.
+             specialUse because it is user-visible work with a persistent notification,
+             not media playback or location tracking. -->
+        <service
+            android:name=".task.TaskRunnerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs the user's own to-do list in the background and reports progress through a notification." />
+        </service>
+
+        <!-- Receives Termux RUN_COMMAND results (stdout/stderr/exit code). -->
+        <receiver
+            android:name=".access.TermuxResultReceiver"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

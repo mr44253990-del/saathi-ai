@@ -168,7 +168,7 @@ class SmartTools(private val context: Context) {
             val intent = Intent(android.provider.AlarmClock.ACTION_SET_ALARM).apply {
                 putExtra(android.provider.AlarmClock.EXTRA_HOUR, hour)
                 putExtra(android.provider.AlarmClock.EXTRA_MINUTES, minute)
-                putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, "💊 $medicine")
+                putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, "ঔষধ: ${medicine}")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)

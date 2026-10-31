@@ -79,6 +79,7 @@ fun HomeScreen(
     onOpenMemory: () -> Unit = {},
     onOpenDraw: () -> Unit = {},
     onOpenHub: () -> Unit = {},
+    onOpenTasks: () -> Unit = {},
     onNewChat: () -> Unit = {},
     onMinimize: () -> Unit
 ) {
@@ -231,14 +232,21 @@ fun HomeScreen(
                         .padding(bottom = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    MiniCard("🎯", "আসল ক্যারম") { onOpenHub() }
-                    MiniCard("🧩", "অ্যাপ চালায়") { onOpenHub() }
-                    MiniCard("🖼️", "ছবি বোঝে") { onOpenHub() }
-                    MiniCard("🎬", "ভিডিও দেখে") { onOpenHub() }
-                    MiniCard("✍️", "হাতে লেখে") { onOpenDraw() }
-                    MiniCard("🧠", "মনে রাখে") { onOpenMemory() }
+                    MiniCard(SaathiIcons.Task, "কাজের তালিকা") { onOpenTasks() }
+                    MiniCard(SaathiIcons.Terminal, "টার্মিনাল/রুট") { onOpenHub() }
+                    MiniCard(SaathiIcons.Board, "আসল ক্যারম") { onOpenHub() }
+                    MiniCard(SaathiIcons.Grid, "অ্যাপ চালায়") { onOpenHub() }
+                    MiniCard(SaathiIcons.Gallery, "ছবি বোঝে") { onOpenHub() }
+                    MiniCard(SaathiIcons.Videocam, "ভিডিও দেখে") { onOpenHub() }
+                    MiniCard(SaathiIcons.Draw, "হাতে লেখে") { onOpenDraw() }
+                    MiniCard(SaathiIcons.Brain, "মনে রাখে") { onOpenMemory() }
                 }
             }
+
+            // ------------------------------------------------------------ now bar
+            // Requirement: whatever Jimi is working on must be visible inside the app
+            // too — the same state the bubble renders outside.
+            NowBar(state, Modifier.fillMaxWidth().padding(bottom = 10.dp))
 
             // ------------------------------------------------------------ transcript
             Column(
@@ -633,7 +641,7 @@ private fun hintFor(phase: Phase, configured: Boolean, mic: Boolean): String = w
 
 /** Small illustrated tile: emoji + label, used for the capability strip. */
 @Composable
-private fun MiniCard(emoji: String, label: String, onClick: () -> Unit) {
+private fun MiniCard(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
@@ -643,7 +651,7 @@ private fun MiniCard(emoji: String, label: String, onClick: () -> Unit) {
             .padding(horizontal = 11.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(emoji, fontSize = 13.sp)
+        Icon(icon, contentDescription = null, tint = jimi.secondary, modifier = Modifier.size(13.dp))
         Spacer(Modifier.width(6.dp))
         Text(label, color = jimi.textPrimary.copy(alpha = 0.85f), fontSize = 10.5.sp)
     }

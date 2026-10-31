@@ -145,10 +145,7 @@ private fun ThemeTile(spec: JimiThemeSpec, selected: Boolean, onClick: () -> Uni
                         .padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        spec.emoji,
-                        fontSize = 16.sp
-                    )
+                    ThemeMark(spec, 18.dp)
                     Spacer(Modifier.size(7.dp))
                     Column(Modifier.weight(1f)) {
                         Text(

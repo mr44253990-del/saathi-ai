@@ -122,7 +122,7 @@ class JimiAccessibilityService : AccessibilityService() {
                 val label = if (text.isNotEmpty()) text else desc
                 if (label.length in 1..140) {
                     val marker = when {
-                        node.isEditable -> "✎ "
+                        node.isEditable -> "[input] "
                         node.isClickable -> "• "
                         node.isScrollable -> "↕ "
                         else -> "- "

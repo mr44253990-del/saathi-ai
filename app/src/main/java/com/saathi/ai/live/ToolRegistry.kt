@@ -591,12 +591,489 @@ object ToolRegistry {
             listOf("query")
         )
 
+
+        // ================================================================ v2
+        // ---- root / system level (the escalation path when a permission blocks work)
+        list += fn(
+            "root_status",
+            "Check whether root (su) is available and what Jimi can therefore do. Call this before assuming something is impossible because of permissions."
+        )
+        list += fn(
+            "root_exec",
+            "Run a shell command as root (su). Use it when normal permissions block the work: pm/settings/am/input commands, reading protected files, changing system config. Always report the real output.",
+            mapOf(
+                "cmd" to ("STRING" to "Command line, e.g. 'settings put system screen_off_timeout 600000'"),
+                "timeout" to ("NUMBER" to "Timeout in ms (default 25000)"),
+                "root" to ("BOOLEAN" to "true to use su (default), false for a plain shell")
+            ),
+            listOf("cmd")
+        )
+        list += fn(
+            "root_grant_self",
+            "Grant Jimi its own dangerous permissions through root (pm grant), so the user does not have to visit Settings one by one."
+        )
+        list += fn(
+            "root_enable_accessibility",
+            "Enable Jimi's accessibility service through root (settings put secure) when the user cannot or will not toggle it manually."
+        )
+        list += fn(
+            "root_default_assistant",
+            "Set Jimi as the default digital assistant through root."
+        )
+        list += fn(
+            "system_setting_put",
+            "Change a deep system setting through root: 'settings put <namespace> <key> <value>'. Examples: screen_off_timeout, stay_on_while_plugged_in, show_touches, animation scales, default IME.",
+            mapOf(
+                "namespace" to ("STRING" to "system | secure | global"),
+                "key" to ("STRING" to "Setting key"),
+                "value" to ("STRING" to "New value")
+            ),
+            listOf("key", "value")
+        )
+        list += fn(
+            "system_setting_get",
+            "Read a deep system setting through root ('settings get').",
+            mapOf(
+                "namespace" to ("STRING" to "system | secure | global"),
+                "key" to ("STRING" to "Setting key")
+            ),
+            listOf("key")
+        )
+        list += fn(
+            "root_input",
+            "Inject touch/keyboard input through root ('input tap|swipe|text|keyevent'). Works even in apps and fields where accessibility injection is blocked.",
+            mapOf(
+                "action" to ("STRING" to "tap | swipe | text | key"),
+                "x" to ("NUMBER" to "x for tap"),
+                "y" to ("NUMBER" to "y for tap"),
+                "x1" to ("NUMBER" to "swipe start x"), "y1" to ("NUMBER" to "swipe start y"),
+                "x2" to ("NUMBER" to "swipe end x"), "y2" to ("NUMBER" to "swipe end y"),
+                "ms" to ("NUMBER" to "swipe duration ms"),
+                "text" to ("STRING" to "text to type"),
+                "key" to ("STRING" to "key name, e.g. BACK, HOME, ENTER, POWER")
+            ),
+            listOf("action")
+        )
+        list += fn(
+            "root_clipboard",
+            "Write to the clipboard through root — reaches protected/third-party fields where the normal clipboard API is refused.",
+            mapOf("text" to ("STRING" to "Text to put on the clipboard")),
+            listOf("text")
+        )
+        list += fn(
+            "root_radio",
+            "Turn wifi / mobile data / airplane mode / torch on or off through root.",
+            mapOf(
+                "what" to ("STRING" to "wifi | data | airplane | torch"),
+                "on" to ("BOOLEAN" to "true = on, false = off")
+            ),
+            listOf("what")
+        )
+        list += fn(
+            "app_control",
+            "Uninstall, freeze/disable, unfreeze/enable, clear data or force-stop an app through root. Ask before anything destructive.",
+            mapOf(
+                "action" to ("STRING" to "uninstall | freeze | unfreeze | clear | stop"),
+                "name" to ("STRING" to "Spoken app name (resolved automatically)"),
+                "package" to ("STRING" to "Exact package name if you already know it")
+            ),
+            listOf("action")
+        )
+        list += fn(
+            "install_apk",
+            "Install an APK file silently through root ('pm install -r -g').",
+            mapOf("path" to ("STRING" to "Absolute path of the APK")),
+            listOf("path")
+        )
+        list += fn(
+            "system_info",
+            "Read deep device state through root: build props, disk usage, running processes, or logcat.",
+            mapOf(
+                "kind" to ("STRING" to "props | storage | processes | logcat"),
+                "lines" to ("NUMBER" to "logcat lines (default 60)"),
+                "filter" to ("STRING" to "optional logcat grep filter")
+            )
+        )
+        list += fn(
+            "root_file",
+            "Read or write any file through root, including paths normal apps cannot touch.",
+            mapOf(
+                "action" to ("STRING" to "read | write"),
+                "path" to ("STRING" to "Absolute path"),
+                "content" to ("STRING" to "Text to write"),
+                "limit" to ("NUMBER" to "Max chars to read (default 4000)")
+            ),
+            listOf("action", "path")
+        )
+
+        // ---- real terminal work (shell + Termux), including reading results back
+        list += fn(
+            "shell",
+            "Run a command in a real shell (root when available) and get stdout/stderr back, so you can read the result and keep going.",
+            mapOf(
+                "cmd" to ("STRING" to "Command line"),
+                "timeout" to ("NUMBER" to "Timeout ms (default 25000)"),
+                "root" to ("BOOLEAN" to "Prefer su (default true)")
+            ),
+            listOf("cmd")
+        )
+        list += fn(
+            "shell_background",
+            "Start a long-running command in the background and get a job id; read its output later with shell_job_output.",
+            mapOf(
+                "cmd" to ("STRING" to "Command line"),
+                "tag" to ("STRING" to "Short label for the job")
+            ),
+            listOf("cmd")
+        )
+        list += fn(
+            "shell_job_output",
+            "Read the tail of a background shell job's output.",
+            mapOf(
+                "id" to ("NUMBER" to "Job id from shell_background"),
+                "tail" to ("NUMBER" to "Lines to return (default 40)")
+            ),
+            listOf("id")
+        )
+        list += fn("shell_jobs", "List the background shell jobs Jimi started and whether they are still running.")
+        list += fn(
+            "shell_drive",
+            "Drive a shell conversation yourself: run a command, read the output, decide the next command, repeat — up to N rounds. Use for interactive tools (top, sqlite3, python, ffmpeg probes).",
+            mapOf(
+                "cmd" to ("STRING" to "First command"),
+                "rounds" to ("NUMBER" to "Max follow-up rounds (default 4)")
+            ),
+            listOf("cmd")
+        )
+        list += fn(
+            "termux_run",
+            "Run a command inside Termux (com.termux.RUN_COMMAND). Use when the work needs Termux's real environment: python, ffmpeg, git, node, pip packages.",
+            mapOf(
+                "cmd" to ("STRING" to "Executable path or command, e.g. /data/data/com.termux/files/usr/bin/python"),
+                "workdir" to ("STRING" to "Working directory (optional)"),
+                "background" to ("BOOLEAN" to "true = background session (default)")
+            ),
+            listOf("cmd")
+        )
+        list += fn(
+            "termux_result",
+            "Read the last result Termux sent back (stdout, stderr, exit code). Call this after termux_run to actually see what happened."
+        )
+        list += fn(
+            "termux_enable_external",
+            "Make Termux accept commands from Jimi: sets allow-external-apps=true in ~/.termux/termux.properties (via root, or by typing it in Termux)."
+        )
+        list += fn("termux_open", "Open the Termux app itself (when the user wants to see or type in it).")
+        list += fn(
+            "termux_type",
+            "Type a command directly into the visible Termux window through accessibility and press Enter — the fallback when RUN_COMMAND is not allowed.",
+            mapOf(
+                "cmd" to ("STRING" to "Command to type"),
+                "enter" to ("BOOLEAN" to "Press Enter afterwards (default true)")
+            ),
+            listOf("cmd")
+        )
+        list += fn("terminal_diagnostics", "Diagnose why terminal work is failing: is Termux installed, is RUN_COMMAND allowed, is root there.")
+
+        // ---- vision without screen sharing
+        list += fn(
+            "screen_look",
+            "Take a screenshot, send that frame to yourself so you can SEE the screen, read the text layer, then delete the temp file. Use this instead of asking for screen share: screenshot -> look -> delete -> fresh screenshot.",
+            mapOf(
+                "keep" to ("BOOLEAN" to "true to also save the JPEG (default false = delete)"),
+                "note" to ("STRING" to "What you are looking for, so the next step is focused")
+            )
+        )
+        list += fn("screen_look_again", "Take a FRESH screenshot and look again (previous temp file already deleted). Call after every action to see its real effect.")
+        list += fn(
+            "screen_grid",
+            "Map the screen into labelled cells (A1..) with coordinates, so you know exactly where each option is before tapping.",
+            mapOf("cols" to ("NUMBER" to "Columns (default 4)"), "rows" to ("NUMBER" to "Rows (default 6)"))
+        )
+        list += fn(
+            "screen_tap_cell",
+            "Tap the centre of a grid cell from screen_grid — precise clicking without guessing pixels.",
+            mapOf(
+                "cell" to ("STRING" to "Cell label, e.g. B3"),
+                "cols" to ("NUMBER" to "Same cols as the grid you used"),
+                "rows" to ("NUMBER" to "Same rows as the grid you used")
+            ),
+            listOf("cell")
+        )
+        list += fn(
+            "screen_locate",
+            "Find an element by its label and return exact x,y coordinates (accessibility tree first, uiautomator dump when the tree is empty).",
+            mapOf("label" to ("STRING" to "Visible text or content description")),
+            listOf("label")
+        )
+        list += fn(
+            "screen_clickables",
+            "List every clickable element on screen with bounds and centre coordinates — the map you need on canvas/game screens that expose no text.",
+            mapOf("limit" to ("NUMBER" to "Max elements (default 40)"))
+        )
+        list += fn("screen_delete_shots", "Delete every temporary screenshot Jimi saved, so nothing private stays on disk.")
+
+        // ---- app directory: hidden / renamed apps, widgets, deep links
+        list += fn(
+            "app_resolve",
+            "Resolve any spoken app name (Bangla or English, including renamed or hidden ones) to its package name.",
+            mapOf("name" to ("STRING" to "Spoken app name")),
+            listOf("name")
+        )
+        list += fn(
+            "app_launch_any",
+            "Launch an app by spoken name with four fallbacks: launcher intent, package intent, monkey (root), then store search. Use when open_app says the app is unknown.",
+            mapOf("name" to ("STRING" to "Spoken app name")),
+            listOf("name")
+        )
+        list += fn("app_list_all", "Full installed-app summary including system apps, with enabled/disabled state.")
+        list += fn("app_hidden", "List apps that are hidden from the launcher (no launcher icon) — the ones users cannot find.")
+        list += fn("app_system_list", "List system apps and their packages.")
+        list += fn("app_renamed", "Find apps whose label looks renamed/disguised (generic names, odd characters) — useful when something was hidden on purpose.")
+        list += fn("app_widgets", "List every home-screen widget provider available on the phone.")
+        list += fn("app_widget_instances", "List the widgets currently placed on home screens.")
+        list += fn(
+            "app_deeplink",
+            "Open a deep link / URI inside an app instead of navigating its UI: kind can be url, tel, sms, mailto, geo, market, upi, share or settings.",
+            mapOf(
+                "kind" to ("STRING" to "url | tel | sms | mailto | geo | market | upi | share | settings"),
+                "payload" to ("STRING" to "The link or value, e.g. https://... or +8801...")
+            ),
+            listOf("kind", "payload")
+        )
+        list += fn(
+            "app_install",
+            "Open the Play Store page (or a local APK path) to install an app. Fix for 'Play Store shows not found'.",
+            mapOf("name" to ("STRING" to "App name or APK path")),
+            listOf("name")
+        )
+
+        // ---- to-do board + background worker + timer
+        list += fn(
+            "task_list",
+            "Show the to-do board with a tick per item, so the user can see progress.",
+            mapOf("limit" to ("NUMBER" to "Max items (default 24)"))
+        )
+        list += fn(
+            "task_add",
+            "Add one item to the to-do board. Use this as soon as a request has more than one step.",
+            mapOf(
+                "title" to ("STRING" to "Short task title"),
+                "detail" to ("STRING" to "Optional detail")
+            ),
+            listOf("title")
+        )
+        list += fn(
+            "task_plan",
+            "Write a whole plan at once: one item per step of a big task. Jimi then works through it in the background and ticks items off.",
+            mapOf("steps" to ("ARRAY" to "Ordered step titles")),
+            listOf("steps")
+        )
+        list += fn(
+            "task_update",
+            "Mark a task done / running / failed / blocked with a note. Only mark DONE when it was verified.",
+            mapOf(
+                "id" to ("STRING" to "Task id from task_list"),
+                "status" to ("STRING" to "done | running | failed | blocked | pending"),
+                "note" to ("STRING" to "What happened")
+            ),
+            listOf("id", "status")
+        )
+        list += fn(
+            "task_start",
+            "Start the background worker: it takes the next pending task, tries to finish it (with escalation), ticks it, and moves on. Works while the app is closed.",
+            mapOf("id" to ("STRING" to "Optional specific task id"))
+        )
+        list += fn(
+            "task_timer",
+            "Keep working on a goal for a set duration — 'set a timer and grind'. The worker retries and escalates until the time is up.",
+            mapOf(
+                "goal" to ("STRING" to "What to achieve"),
+                "minutes" to ("NUMBER" to "Duration in minutes (1-60)")
+            ),
+            listOf("goal")
+        )
+        list += fn("task_stop", "Stop the background worker immediately.")
+        list += fn(
+            "task_clear",
+            "Remove finished tasks, or the whole board.",
+            mapOf("what" to ("STRING" to "finished (default) | all"))
+        )
+        list += fn("task_progress", "One-line progress summary of the board (percent + counts).")
+
+        // ---- the never-give-up solver
+        list += fn(
+            "solve",
+            "Hand a whole goal to the escalation solver: autopilot -> offline pack -> relaunch app -> screenshot vision -> shell/root, verifying after every strategy and reporting honestly. Use it when a task keeps failing or when the user says 'যেভাবেই হোক করে দাও'.",
+            mapOf("goal" to ("STRING" to "The goal in the user's own words")),
+            listOf("goal")
+        )
+        list += fn(
+            "solve_alternative",
+            "Try a deliberately different route after a failed solve, skipping the strategies that already failed.",
+            mapOf(
+                "goal" to ("STRING" to "The goal"),
+                "previous_report" to ("STRING" to "The earlier report text")
+            ),
+            listOf("goal")
+        )
+
+        // ---- drawing, generating, editing
+        list += fn(
+            "draw_image",
+            "Jimi draws a picture ITSELF on the device (offline, code-drawn Canvas art: sunset, night, mountains, river, house, tree, flower, cat, bird, mosque, mandala, city, rain, boat, heart, flag, patterns...). No network, no emoji, no clip art.",
+            mapOf(
+                "prompt" to ("STRING" to "What to draw, Bangla or English"),
+                "size" to ("NUMBER" to "Square size in px (default 1080)")
+            ),
+            listOf("prompt")
+        )
+        list += fn(
+            "draw_poster",
+            "Draw a picture and put text on it (greeting card, banner, poster).",
+            mapOf(
+                "prompt" to ("STRING" to "What to draw"),
+                "text" to ("STRING" to "Text to write on it (\\n for a new line)"),
+                "size" to ("NUMBER" to "Square size in px (default 1080)")
+            ),
+            listOf("prompt", "text")
+        )
+        list += fn(
+            "generate_image",
+            "Generate a photorealistic image with the Gemini image model (needs network + API key). Use draw_image when offline.",
+            mapOf(
+                "prompt" to ("STRING" to "Detailed description"),
+                "aspect" to ("STRING" to "1:1 | 16:9 | 9:16 | 4:3 | 3:4")
+            ),
+            listOf("prompt")
+        )
+        list += fn(
+            "edit_image_ai",
+            "Edit an existing image with the image model (add/remove/change something described in words).",
+            mapOf(
+                "path" to ("STRING" to "Path of the source image"),
+                "instruction" to ("STRING" to "What to change")
+            ),
+            listOf("path", "instruction")
+        )
+        list += fn(
+            "edit_image",
+            "Edit an image on-device with real pixel operations (no app, no network). Ops is a comma-separated list: rotate=90, flip=h|v, crop=1:1|16:9, resize=1080, bright=1.15, contrast=1.2, sat=1.3, gray, invert, vintage, cool, warm, vivid, blur, circle, border=24, text=শুভ নববর্ষ. Returns the new file path.",
+            mapOf(
+                "path" to ("STRING" to "Source image path"),
+                "ops" to ("STRING" to "Comma-separated operations")
+            ),
+            listOf("path", "ops")
+        )
+        list += fn(
+            "collage",
+            "Join two or more images into one collage.",
+            mapOf(
+                "paths" to ("ARRAY" to "Image paths, in order"),
+                "vertical" to ("BOOLEAN" to "true = stack vertically, false = side by side")
+            ),
+            listOf("paths")
+        )
+        list += fn(
+            "set_wallpaper",
+            "Set an image (drawn, generated or edited) as the home or lock wallpaper.",
+            mapOf(
+                "path" to ("STRING" to "Image path"),
+                "which" to ("STRING" to "home (default) | lock")
+            ),
+            listOf("path")
+        )
+        list += fn(
+            "share_image_file",
+            "Open the share sheet for an image/file Jimi created, so the user can send it anywhere.",
+            mapOf("path" to ("STRING" to "File path (file:// accepted)")),
+            listOf("path")
+        )
+
+        // ---- health + self repair
+        list += fn(
+            "health_check",
+            "Measure battery, temperature, storage, RAM, network, permissions, cache, API reachability and stuck tasks, then give concrete suggestions.",
+            mapOf("api" to ("BOOLEAN" to "Also ping the Gemini API to prove it works (default true)"))
+        )
+        list += fn(
+            "health_fix",
+            "Self-diagnose and repair: clears cache, frees space, restarts a dead session, retries failed tasks, and opens the exact settings page when one tap from the user is unavoidable. Reports fixed / needs-you / cannot-fix honestly."
+        )
+        list += fn("health_headline", "One-line health summary for a quick answer.")
+
+        // ---- games on the phone's own apps
+        list += fn(
+            "game_open",
+            "Open the REAL installed game app (Ludo / chess / carrom). If it is not installed, say so and open the store search — never pretend to play.",
+            mapOf("name" to ("STRING" to "ludo | chess | carrom")),
+            listOf("name")
+        )
+        list += fn(
+            "game_play",
+            "Make one real move inside the installed game: 'roll' throws the Ludo dice then screenshots the board, 'token 2' moves that token, 'e2e4' drags that chess move on the real board, 'strike' flicks the carrom striker.",
+            mapOf(
+                "name" to ("STRING" to "ludo | chess | carrom"),
+                "action" to ("STRING" to "roll | token N | e2e4 | strike")
+            ),
+            listOf("name")
+        )
+        list += fn("game_status", "Report which game apps are actually installed and whether accessibility/root are ready to drive them.")
+
+        // ---- restricted input fields
+        list += fn(
+            "fill_field",
+            "Write into an input field that resists normal automation: focuses it, tries accessibility typing, then root input, then clipboard + Paste menu. This is the answer for 'restricted input fields'.",
+            mapOf(
+                "label" to ("STRING" to "The field's visible label or hint (empty = currently focused field)"),
+                "text" to ("STRING" to "Text to enter")
+            ),
+            listOf("text")
+        )
+        list += fn(
+            "paste_into",
+            "Paste the clipboard into a named field using long-press + the Paste menu (works in protected third-party fields).",
+            mapOf("label" to ("STRING" to "Field label or hint (empty = current focus)"))
+        )
+
+        list += fn(
+            "gesture_tap",
+            "Tap exact pixel coordinates (use after screen_locate / screen_grid / screen_clickables gave you the numbers).",
+            mapOf("x" to ("NUMBER" to "x in px"), "y" to ("NUMBER" to "y in px")),
+            listOf("x", "y")
+        )
+        list += fn(
+            "gesture_long_press",
+            "Long-press exact pixel coordinates (context menus, selection handles, drag sources).",
+            mapOf(
+                "x" to ("NUMBER" to "x in px"), "y" to ("NUMBER" to "y in px"),
+                "ms" to ("NUMBER" to "Hold duration ms (default 620)")
+            ),
+            listOf("x", "y")
+        )
+
         return JSONArray(list)
     }
 
     /** Tool descriptions the narrator hands to the model as a quick reference. */
     const val TOOL_GUIDE = """
         তুমি ফোনের ভেতরে থাকো এবং নিচের টুলগুলো দিয়ে সত্যিকারের কাজ করতে পারো:
+        রুট/সিস্টেম: root_status, root_exec, root_input, root_clipboard, root_radio, app_control,
+          system_setting_put/get, system_info, root_file, install_apk, root_grant_self,
+          root_enable_accessibility, root_default_assistant।
+        টার্মিনাল: shell, shell_background, shell_job_output, shell_jobs, shell_drive, termux_run,
+          termux_result, termux_open, termux_type, termux_enable_external, terminal_diagnostics।
+        দেখা: screen_look, screen_look_again, screen_grid, screen_tap_cell, screen_locate,
+          screen_clickables, screen_delete_shots।
+        অ্যাপ: app_resolve, app_launch_any, app_list_all, app_hidden, app_system_list, app_renamed,
+          app_widgets, app_widget_instances, app_deeplink, app_install।
+        কাজের তালিকা: task_plan, task_add, task_list, task_update, task_start, task_timer, task_stop,
+          task_clear, task_progress, solve, solve_alternative।
+        বানানো/এডিট: draw_image, draw_poster, generate_image, edit_image_ai, edit_image, collage,
+          set_wallpaper, share_image_file।
+        স্বাস্থ্য: health_check, health_fix, health_headline।
+        গেম: game_open, game_play, game_status।
+        লেখা বসানো: fill_field, paste_into।
         open_app, open_url, search_youtube, play_on_youtube, read_screen, screen_tap,
         screen_tap_at, screen_scroll, screen_type, screen_zoom, screen_press, current_app,
         call_number, call_contact, send_sms, read_recent_sms, read_call_log, read_contacts,

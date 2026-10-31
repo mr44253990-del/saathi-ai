@@ -148,7 +148,7 @@ fun PermissionsScreen(onDone: () -> Unit) {
         ) {
             Spacer(Modifier.height(18.dp))
 
-            Text("স্বাগতম 👋", fontSize = 13.sp, color = com.saathi.ai.ui.theme.jimi.secondary, fontWeight = FontWeight.SemiBold)
+            Text("স্বাগতম", fontSize = 13.sp, color = com.saathi.ai.ui.theme.jimi.secondary, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
             Text("Jimi-কে সব ক্ষমতা দাও", fontSize = 29.sp, fontWeight = FontWeight.Bold, color = com.saathi.ai.ui.theme.jimi.textPrimary)
             Spacer(Modifier.height(10.dp))
@@ -283,7 +283,7 @@ fun PermissionsScreen(onDone: () -> Unit) {
 
             if (!accessibilityOn) {
                 Text(
-                    "💡 Accessibility চালু না করলে Jimi দেখতে/টাচ করতে পারবে না — পরে সেটিংস থেকেও চালু করা যাবে।",
+                    "Accessibility চালু না করলে Jimi দেখতে/টাচ করতে পারবে না — পরে সেটিংস থেকেও চালু করা যাবে।",
                     fontSize = 11.sp,
                     color = Color(0xFFFFB86B),
                     textAlign = TextAlign.Center,
@@ -357,7 +357,7 @@ private fun SpecialRow(
         }
         Spacer(Modifier.width(8.dp))
         Text(
-            if (enabled) "চালু ✓" else "খোলো →",
+            if (enabled) "চালু" else "খোলো",
             color = if (enabled) Aqua else accent,
             fontSize = 11.5.sp,
             fontWeight = FontWeight.SemiBold
@@ -433,7 +433,7 @@ private fun GlassRowNote() {
             .padding(14.dp),
         verticalAlignment = Alignment.Top
     ) {
-        Text(text = "🎤", fontSize = 15.sp)
+        Icon(SaathiIcons.Mic, null, tint = com.saathi.ai.ui.theme.jimi.secondary, modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(10.dp))
         Text(
             text = "বাংলায় \"হেই জিমি\" বা \"Hey Jimi\" বলে ডাকলেই Jimi সাড়া দেবে — মাইক্রোফোন চালু না থাকলেও হটওয়ার্ড লিসেনার কাজ করবে (পরে হোম স্ক্রিন থেকে বন্ধ করা যাবে)।",
