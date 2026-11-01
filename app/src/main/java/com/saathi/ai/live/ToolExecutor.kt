@@ -34,6 +34,32 @@ class ToolExecutor(private val context: Context) {
     private val imageGen by lazy { com.saathi.ai.create.ImageGen(context) }
     private val board by lazy { com.saathi.ai.task.TaskBoard(context) }
 
+    // v3 engines. Same rule as above: constructed only when a v3 tool is used.
+    private val research by lazy { com.saathi.ai.web.ResearchEngine(context) }
+    private val audioGen by lazy { com.saathi.ai.media.AudioGen(context) }
+    private val audioLab by lazy { com.saathi.ai.media.AudioLab(context) }
+    private val videoLab by lazy { com.saathi.ai.media.VideoLab(context) }
+    private val visionLab by lazy { com.saathi.ai.media.VisionLab(context) }
+    private val docs by lazy { com.saathi.ai.create.DocumentStudio(context) }
+    private val history by lazy { com.saathi.ai.data.TaskHistory(context) }
+    private val memSearch by lazy { com.saathi.ai.data.MemorySearch(context) }
+    private val projects by lazy { com.saathi.ai.data.ProjectWorkspace(context) }
+    private val summarizer by lazy { com.saathi.ai.data.ContextSummarizer(context) }
+    private val daily by lazy { com.saathi.ai.daily.DailyAssistant(context) }
+    private val templates by lazy { com.saathi.ai.auto.TemplateStore(context) }
+    private val engine get() = com.saathi.ai.task.TaskEngine
+    private val orch get() = com.saathi.ai.agent.Orchestrator.get(context)
+    private val web get() = com.saathi.ai.web.WebBrowser
+    private val shiz get() = com.saathi.ai.access.ShizukuBridge
+    private val perms get() = com.saathi.ai.access.PermissionCenter
+    private val errs get() = com.saathi.ai.core.ErrorCenter
+    private val gate get() = com.saathi.ai.core.ApprovalGate
+    private val kill get() = com.saathi.ai.core.KillSwitch
+    private val playback get() = com.saathi.ai.media.AudioPlaybackService
+    private val recorder get() = com.saathi.ai.auto.MacroRecorder
+    private val router get() = ModelRouter
+    private val visual get() = com.saathi.ai.vision.VisualCore
+
     /**
      * Repeated-call guard.
      *
@@ -596,7 +622,7 @@ class ToolExecutor(private val context: Context) {
                 "fill_field" -> fillField(a.str("label"), a.str("text"))
                 "paste_into" -> pasteInto(a.str("label"))
 
-                else -> "Unknown tool: $name"
+                else -> v3Tool(name, a) ?: "Unknown tool: $name"
             }
         } catch (t: Throwable) {
             "Error: ${t.message ?: t.javaClass.simpleName}"
@@ -671,6 +697,267 @@ class ToolExecutor(private val context: Context) {
         if (has(key)) optBoolean(key, fallback) else fallback
     private fun JSONObject.int(key: String, fallback: Int): Int =
         if (has(key)) optDouble(key, fallback.toDouble()).toInt() else fallback
+
+
+    // =================================================================== v3 tools
+
+    /**
+     * Second-generation tool set (Phase 3-18 of the v3 upgrade): task engine,
+     * multi-agent orchestration, visual computer use, browser, research, audio,
+     * video, image lab, document studio, memory, automations, daily assistant and
+     * the system-control surface (Shizuku, permissions, kill switch, error centre).
+     *
+     * Returns null for names it does not own, so the main `when` still reports
+     * "Unknown tool" for anything genuinely missing.
+     */
+    private fun v3Tool(name: String, a: JSONObject): String? {
+        fun res(r: com.saathi.ai.agent.AgentResult): String =
+            "${r.verdictLine()}\n${r.report}".trim() +
+                if (r.artifacts.isNotEmpty()) "\nফাইল/আউটপুট:\n" + r.artifacts.joinToString("\n") { "• $it" } else ""
+        fun goals(raw: String): List<String> =
+            raw.split("|").map { it.trim() }.filter { it.isNotBlank() }
+
+        return when (name) {
+            // ---- autonomous task engine
+            "engine_start" -> engine.start(
+                context, a.str("goal"), a.int("priority", 3),
+                a.num("deadline_minutes") * 60, a.int("budget", prefs.agentBudget)
+            )
+            "engine_start_many" -> engine.startMany(context, goals(a.str("goals")), a.int("priority", 3))
+            "engine_timer" -> engine.startAfter(
+                context, a.str("goal"), a.num("delay_minutes") * 60, a.int("priority", 3)
+            )
+            "engine_pause" -> engine.pause(a.str("id"))
+            "engine_resume" -> engine.resume(context, a.str("id"))
+            "engine_cancel" -> engine.cancel(a.str("id"))
+            "engine_cancel_all" -> engine.cancelAll()
+            "engine_retry" -> engine.retry(context, a.str("id"))
+            "engine_status" -> engine.statusText()
+            "engine_report" -> engine.report(a.str("id"))
+            "engine_headline" -> engine.headline()
+            "engine_clear" -> engine.clearFinished()
+            "engine_recover" -> engine.recover(context)
+
+            // ---- multi-agent orchestration
+            "agent_plan" -> res(orch.runPlan(a.str("goal"), budgetSteps = a.int("budget", 22)))
+            "agent_run" -> res(
+                orch.run(
+                    a.str("goal"), budgetSteps = a.int("budget", prefs.agentBudget),
+                    detail = a.str("detail")
+                )
+            )
+            "agent_parallel" -> {
+                val g = goals(a.str("goals"))
+                if (g.isEmpty()) "ব্যর্থ: কোনো লক্ষ্য দেওয়া হয়নি — ' | ' দিয়ে আলাদা করে লেখো"
+                else orch.parallel(g, List(g.size) { "par-$it" }).joinToString("\n\n") { (id, r) ->
+                    "[$id] ${r.verdictLine()}\n${r.report.take(700)}"
+                }
+            }
+            "agent_status" -> com.saathi.ai.agent.ResourceLocks.status() +
+                "\nএজেন্ট: planner, research, browser, visual, file, terminal, code, media, audio, video, recovery"
+
+            // ---- visual computer use
+            "screen_agent" -> res(
+                orch.run(
+                    a.str("goal"),
+                    budgetSteps = a.int("budget", 10),
+                    detail = "স্ক্রিন দেখে করতে হবে — ভিজ্যুয়াল কম্পিউটার এজেন্ট ব্যবহার করো"
+                )
+            )
+            "vision_fill" -> visual.fill(context, a.str("label"), a.str("text"))
+            "vision_status" -> visual.status(context)
+
+            // ---- browser workspace
+            "browser_open" -> web.open(context, a.str("url"))
+            "browser_search" -> web.search(context, a.str("query"))
+            "browser_text" -> web.text(context, a.int("max_chars", 12_000))
+            "browser_links" -> web.links(context, a.int("limit", 20))
+            "browser_fields" -> web.fields(context, a.int("limit", 20))
+            "browser_form_fill" -> web.fill(context, a.str("label"), a.str("value"))
+            "browser_click_text" -> web.clickText(context, a.str("text"))
+            "browser_shot" -> web.shot(context, a.bool("keep", false))
+            "browser_back" -> web.back(context)
+            "browser_forward" -> web.forward(context)
+            "browser_reload" -> web.reload(context)
+            "browser_new_tab" -> web.newTab(context, a.str("url"))
+            "browser_tabs" -> web.tabs()
+            "browser_switch_tab" -> web.switchTab(a.num("id"))
+            "browser_close_tab" -> web.closeTab(context, a.num("id"))
+            "browser_close_all" -> web.closeAll(context)
+            "browser_download" -> web.download(context, a.str("url"), null, a.str("mime").ifBlank { null }, null)
+            "browser_downloads" -> web.downloads(context)
+            "browser_status" -> web.status(context)
+            "browser_clear" -> web.clear(context)
+            "browser_home" -> {
+                val site = a.str("site").lowercase()
+                val url = when (site) {
+                    "google" -> "https://www.google.com"
+                    "duckduckgo", "ddg" -> "https://duckduckgo.com"
+                    "bing" -> "https://www.bing.com"
+                    "youtube" -> "https://www.youtube.com"
+                    else -> site
+                }
+                prefs.browserHome = url
+                "সফল: ব্রাউজারের শুরু পেজ সেট হয়েছে — $url"
+            }
+
+            // ---- research engine
+            "research_run" -> research.research(a.str("query"), a.int("sources", prefs.researchSources))
+            "research_summary" -> research.summarize(a.str("text"), a.str("ask"))
+            "research_cache" -> research.cacheStats()
+            "research_clear_cache" -> research.clearCache()
+
+            // ---- audio: generation, playback, processing
+            "audio_speak" -> {
+                val out = audioGen.speak(
+                    a.str("text"),
+                    a.str("voice").ifBlank { prefs.ttsVoice },
+                    a.str("style")
+                )
+                if (a.bool("play", false)) {
+                    val path = Regex("/[^\\s:]+\\.wav").find(out)?.value
+                    if (path != null) out + "\n" + playback.play(context, path, java.io.File(path).name)
+                    else out + "\n(ব্যাকগ্রাউন্ডে চালানো যায়নি — ফাইল পাথ পাওয়া যায়নি)"
+                } else out
+            }
+            "audio_dialogue" -> audioGen.dialogue(a.str("script"))
+            "audio_ambient" -> {
+                val out = audioGen.ambient(a.str("kind"), a.int("seconds", 120))
+                if (a.bool("play", false)) {
+                    val path = Regex("/[^\\s:]+\\.wav").find(out)?.value
+                    if (path != null) out + "\n" + playback.play(context, path, java.io.File(path).name, true)
+                    else out + "\n(ব্যাকগ্রাউন্ডে চালানো যায়নি — ফাইল পাথ পাওয়া যায়নি)"
+                } else out
+            }
+            "audio_voices" -> audioGen.voices()
+            "audio_library" -> audioGen.library()
+            "audio_play" -> playback.play(
+                context, a.str("path"),
+                java.io.File(a.str("path")).name, a.bool("loop", false)
+            )
+            "audio_pause" -> playback.pause(context)
+            "audio_resume" -> playback.resume(context)
+            "audio_stop" -> playback.stop(context)
+            "audio_play_status" -> playback.status()
+            "audio_denoise" -> audioLab.denoise(
+                a.str("path"),
+                if (a.has("strength")) a.optDouble("strength", 0.8).toFloat() else 0.8f
+            )
+            "audio_trim" -> audioLab.trim(a.str("path"), a.num("start_seconds"), a.num("end_seconds"))
+            "audio_transcribe" -> audioLab.transcribe(a.str("path"))
+            "audio_summarize" -> audioLab.summarize(a.str("path"))
+            "audio_speakers" -> audioLab.speakerTags(a.str("path"))
+
+            // ---- video
+            "video_summary" -> videoLab.summarize(a.str("path"))
+            "video_scenes" -> videoLab.scenes(
+                a.str("path"),
+                if (a.has("threshold")) a.optDouble("threshold", 0.24) else 0.24
+            )
+            "video_subtitles" -> videoLab.subtitles(a.str("path"))
+            "video_frame" -> videoLab.posterFrame(a.str("path"), a.num("at_seconds") * 1000L)
+            "video_edit_hint" -> videoLab.trimHint(a.str("path"), a.str("goal"))
+
+            // ---- image lab
+            "image_ocr" -> visionLab.ocr(a.str("path"))
+            "image_detect" -> visionLab.detect(a.str("path"))
+            "image_compare" -> visionLab.compare(a.str("path_a"), a.str("path_b"), a.str("question"))
+            "image_enhance" -> visionLab.enhance(a.str("path"), a.int("target_side", 1600))
+            "image_remove_bg" -> visionLab.removeBackground(a.str("path"), a.int("tolerance", 42))
+            "image_facts" -> visionLab.facts(a.str("path"))
+            "image_caption" -> visionLab.caption(a.str("path"), a.str("text"), a.bool("bottom", true))
+
+            // ---- document studio
+            "doc_create" -> docs.create(a.str("kind"), a.str("content"), a.str("title"))
+            "doc_pdf" -> docs.pdf(a.str("title"), a.str("content"))
+            "doc_docx" -> docs.docx(a.str("title"), a.str("content").lines())
+            "doc_pptx" -> docs.pptx(a.str("title"), docs.slidesFrom(a.str("content")))
+            "doc_html" -> docs.html(a.str("title"), a.str("content"))
+            "doc_csv" -> docs.csv(a.str("title"), docs.parseCsv(a.str("content")))
+            "doc_list" -> docs.library()
+            "doc_capabilities" -> docs.capabilities()
+
+            // ---- memory, history, projects
+            "memory_search" -> memSearch.report(a.str("query"), a.int("limit", 10))
+            "memory_overview" -> memSearch.overview()
+            "memory_forget" -> memSearch.forget(a.str("kind"), a.str("id"))
+            "memory_forget_all" -> memSearch.forgetAll(a.str("what"))
+            "history_recent" -> history.report(a.int("limit", 8))
+            "history_search" -> {
+                val hits = history.search(a.str("query"), a.int("limit", 10))
+                if (hits.isEmpty()) "কোনো ফল নেই — «${a.str("query")}» টাস্ক ইতিহাসে পাওয়া যায়নি"
+                else hits.joinToString("\n") { "[${it.status}] ${it.goal} — ${it.report.lines().firstOrNull()?.take(120)}" }
+            }
+            "history_stats" -> history.stats()
+            "context_brief" -> summarizer.workingContext(a.str("goal"))
+            "project_create" -> projects.create(a.str("name"), a.str("note"))
+            "project_open" -> projects.open(a.str("name"))
+            "project_note" -> projects.addNote(a.str("text"))
+            "project_add_file" -> projects.addFile(a.str("path"))
+            "project_list" -> projects.list()
+            "project_detail" -> projects.detail(a.str("name"))
+            "project_remove" -> projects.remove(a.str("name"))
+
+            // ---- automations and macro recording
+            "auto_list" -> templates.list()
+            "auto_save" -> templates.save(a.str("name"), a.str("goal"), goals(a.str("steps")))
+            "auto_run" -> templates.run(a.str("name"), a.int("priority", 3))
+            "auto_detail" -> templates.detail(a.str("name"))
+            "auto_delete" -> templates.delete(a.str("name"))
+            "auto_export" -> templates.export(a.str("name"))
+            "auto_import" -> templates.import(a.str("text"))
+            "auto_from_task" -> templates.fromHistory(a.str("run_id"), a.str("name"))
+            "record_start" -> recorder.start()
+            "record_stop" -> recorder.stop()
+            "record_preview" -> recorder.preview()
+            "record_save" -> recorder.saveAs(context, a.str("name"))
+            "record_from_text" -> recorder.fromText(context, a.str("name"), a.str("description"))
+
+            // ---- daily assistant and health
+            "daily_report" -> daily.report(a.bool("check_api", false))
+            "daily_activity" -> daily.activityBlock()
+            "daily_sleep" -> daily.sleepWindow(a.str("text"))
+            "daily_medicine" -> daily.medReminder(a.str("medicine"), a.str("time"))
+            "daily_appointment" -> daily.appointmentPrep(a.str("title"), a.str("notes"))
+
+            // ---- Shizuku and privileged access
+            "shizuku_status" -> shiz.status(context)
+            "shizuku_diagnostics" -> shiz.diagnostics(context)
+            "shizuku_exec" -> {
+                val cmd = a.str("command")
+                if (cmd.isBlank()) "ব্যর্থ: কমান্ড খালি"
+                else {
+                    val risk = gate.classify("shell", cmd)
+                    if (risk >= com.saathi.ai.core.ApprovalGate.Risk.HIGH) {
+                        val decision = gate.askBlocking(context, "Shizuku কমান্ড", cmd)
+                        if (decision.decision != com.saathi.ai.core.ApprovalGate.Decision.APPROVED) {
+                            "আটকে: কমান্ডটি অনুমতি ছাড়া চালানো হবে না (${decision.decision}) — $cmd"
+                        } else shiz.exec(cmd).report(1200)
+                    } else shiz.exec(cmd).report(1200)
+                }
+            }
+            "shizuku_grant" -> shiz.grantPermission(context, a.str("package"), a.str("permission"))
+            "shizuku_open" -> shiz.openShizuku(context)
+
+            // ---- permissions, safety, errors, routing
+            "permission_dashboard" -> perms.dashboard(context)
+            "permission_fix" -> perms.autoFix(context)
+            "permission_guide" -> perms.guide(context, a.str("id"))
+            "kill_stop" -> kill.stopAll(context)
+            "error_report" -> if (a.str("module").isNotBlank()) errs.forModule(a.str("module"))
+                else errs.report(a.int("limit", 18))
+            "error_clear" -> { errs.clear(); "সফল: এরর লগ মুছে ফেলা হয়েছে" }
+            "approval_status" -> gate.status() + "\n" + gate.historyText(8)
+            "approval_decide" -> {
+                gate.decideCurrent(a.bool("approved", false))
+                if (a.bool("approved", false)) "অনুমতি দেওয়া হয়েছে — কাজ চলবে" else "অনুমতি দেওয়া হয়নি — কাজ আটকানো হয়েছে"
+            }
+            "model_router" -> router.status(context)
+            "model_free" -> router.freeMemory(context)
+
+            else -> null
+        }
+    }
 
     companion object {
         private const val DUPLICATE_WINDOW_MS = 12_000L

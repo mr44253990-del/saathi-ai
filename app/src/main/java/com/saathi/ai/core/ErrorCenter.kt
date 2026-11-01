@@ -110,6 +110,12 @@ object ErrorCenter {
      * the first match wins. Every rule pairs a cause with something the user or
      * Jimi can actually do next.
      */
+    /**
+     * Public entry point for the recovery agent: give it any failure text and it
+     * answers with (cause, what to do). Falls back to an honest "could not tell".
+     */
+    fun analyseText(text: String): Pair<String, String> = analyse("system", text.take(200), text.take(600))
+
     private fun analyse(module: String, message: String, detail: String): Pair<String, String> {
         val hay = "$message $detail".lowercase()
         fun has(vararg w: String) = w.any { hay.contains(it) }

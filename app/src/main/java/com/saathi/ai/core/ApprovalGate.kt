@@ -178,6 +178,17 @@ object ApprovalGate {
         return Outcome(decision, note)
     }
 
+    /**
+     * Blocking variant for non-suspend callers (the agent engine runs on its own
+     * worker threads, never on the main thread, so waiting here is safe).
+     */
+    fun askBlocking(
+        context: Context,
+        action: String,
+        detail: String = "",
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS
+    ): Outcome = kotlinx.coroutines.runBlocking { ask(context, action, detail, timeoutMs) }
+
     /** Called from the dialog, the bubble button or a notification action. */
     fun decide(id: Long, approved: Boolean) {
         if (id != currentId) return

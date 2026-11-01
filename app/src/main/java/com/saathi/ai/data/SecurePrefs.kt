@@ -140,6 +140,51 @@ class SecurePrefs(private val contextRef: Context) {
         get() = prefs.getBoolean(KEY_BG_TASKS, true)
         set(value) = prefs.edit().putBoolean(KEY_BG_TASKS, value).apply()
 
+    // ------------------------------------------------------------------ v3
+
+    /** Model used by the visual computer agent. "" = try the built-in fallbacks. */
+    var computerUseModel: String
+        get() = prefs.getString(KEY_CU_MODEL, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_CU_MODEL, value.trim()).apply()
+
+    /** Gemini TTS model. "" = try the built-in fallbacks. */
+    var ttsModel: String
+        get() = prefs.getString(KEY_TTS_MODEL, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_TTS_MODEL, value.trim()).apply()
+
+    /** Voice for generated audio (30 prebuilt names; Kore/Aoede/Puck are common). */
+    var ttsVoice: String
+        get() = prefs.getString(KEY_TTS_VOICE, "Kore") ?: "Kore"
+        set(value) = prefs.edit().putString(KEY_TTS_VOICE, value.trim()).apply()
+
+    /** How many sources the research engine cross-checks before answering. */
+    var researchSources: Int
+        get() = prefs.getInt(KEY_RESEARCH_SRC, 5)
+        set(value) = prefs.edit().putInt(KEY_RESEARCH_SRC, value.coerceIn(1, 10)).apply()
+
+    /** Step budget per agent run — keeps autonomous work bounded. */
+    var agentBudget: Int
+        get() = prefs.getInt(KEY_AGENT_BUDGET, 14)
+        set(value) = prefs.edit().putInt(KEY_AGENT_BUDGET, value.coerceIn(2, 60)).apply()
+
+    /**
+     * Privacy default: screenshots are temporary. Only when the user explicitly
+     * asks to keep them does anything stay on disk.
+     */
+    var keepScreenshots: Boolean
+        get() = prefs.getBoolean(KEY_KEEP_SHOTS, false)
+        set(value) = prefs.edit().putBoolean(KEY_KEEP_SHOTS, value).apply()
+
+    /** Optional biometric lock before Jimi will act on sensitive screens. */
+    var biometricLock: Boolean
+        get() = prefs.getBoolean(KEY_BIOMETRIC, false)
+        set(value) = prefs.edit().putBoolean(KEY_BIOMETRIC, value).apply()
+
+    /** Start page for the built-in browser workspace. */
+    var browserHome: String
+        get() = prefs.getString(KEY_BROWSER_HOME, "https://www.google.com") ?: "https://www.google.com"
+        set(value) = prefs.edit().putString(KEY_BROWSER_HOME, value.trim()).apply()
+
     // ---------------------------------------------------------------- long-term memory
 
     private val store by lazy { MemoryStore(contextRef) }
@@ -193,6 +238,14 @@ class SecurePrefs(private val contextRef: Context) {
         private const val KEY_ROOT = "root_mode"
         private const val KEY_VISION = "vision_mode"
         private const val KEY_BG_TASKS = "background_tasks"
+        private const val KEY_CU_MODEL = "computer_use_model"
+        private const val KEY_TTS_MODEL = "tts_model"
+        private const val KEY_TTS_VOICE = "tts_voice"
+        private const val KEY_RESEARCH_SRC = "research_sources"
+        private const val KEY_AGENT_BUDGET = "agent_budget"
+        private const val KEY_KEEP_SHOTS = "keep_screenshots"
+        private const val KEY_BIOMETRIC = "biometric_lock"
+        private const val KEY_BROWSER_HOME = "browser_home"
 
         const val DEFAULT_MODEL = "gemini-3.8-live"
         const val DEFAULT_VOICE = "Aoede"

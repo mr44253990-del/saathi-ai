@@ -236,10 +236,27 @@
                 android:value="Runs the user's own to-do list in the background and reports progress through a notification." />
         </service>
 
+        <!-- Generated speech / ambience keeps playing with the screen off. -->
+        <service
+            android:name=".media.AudioPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
         <!-- Receives Termux RUN_COMMAND results (stdout/stderr/exit code). -->
         <receiver
             android:name=".access.TermuxResultReceiver"
             android:exported="false" />
+
+        <!-- Restores the task queue and the error log after the phone restarts. -->
+        <receiver
+            android:name=".core.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
 
         <!-- Shizuku handshake: hands the privileged binder to this process as soon
              as Shizuku is running. exported + INTERACT_ACROSS_USERS_FULL is what the

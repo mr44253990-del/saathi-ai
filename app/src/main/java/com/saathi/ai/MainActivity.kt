@@ -349,6 +349,17 @@ private fun JimiApp(
     var configured by remember { mutableStateOf(prefs.isConfigured) }
     val state by SessionHub.state.collectAsState()
 
+    // v3 bring-up: these must exist before the user asks for anything, so a task
+    // survives a restart, errors are on record and the browser can be killed.
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { com.saathi.ai.access.ShizukuBridge.attach(context) }
+            runCatching { com.saathi.ai.core.ErrorCenter.load(context) }
+            runCatching { com.saathi.ai.task.TaskEngine.init(context) }
+            runCatching { com.saathi.ai.web.WebBrowser.registerKillSwitch() }
+        }
+    }
+
     LaunchedEffect(Unit) {
         delay(1400)
         if (!SessionHub.isServiceRunning) {
@@ -400,11 +411,14 @@ private fun JimiApp(
                 onOpenFiles = { screen = "files" },
                 onOpenGames = { screen = "games" },
                 onOpenTasks = { returnTo = "hub"; screen = "tasks" },
+                onOpenControl = { returnTo = "hub"; screen = "control" },
                 onBack = { screen = "home" }
             )
 
             // The background worker's notification deep-links straight here.
             "tasks" -> com.saathi.ai.ui.TaskScreen(onBack = { screen = returnTo })
+
+            "control" -> com.saathi.ai.ui.ControlCenterScreen(onBack = { screen = returnTo })
 
             "files" -> FilesScreen(onBack = { screen = "hub" })
 

@@ -69,7 +69,10 @@ fun HubScreen(
     onOpenFiles: () -> Unit,
     onOpenGames: () -> Unit,
     onOpenTasks: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    // v3 control centre (task engine, browser, audio, memory, health, automations).
+    // Optional with a no-op default so existing callers keep compiling unchanged.
+    onOpenControl: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -251,6 +254,11 @@ fun HubScreen(
 
                 // ---------------------------------------------------- nav tiles
                 HubTile("কাজের তালিকা", "বড় কাজ ভেঙে ব্যাকগ্রাউন্ডে চলে, টিক পড়ে", SaathiIcons.Task, onOpenTasks)
+                HubTile(
+                    "কন্ট্রোল সেন্টার",
+                    "টাস্ক ইঞ্জিন, ব্রাউজার, অডিও, মেমোরি, হেলথ ও নিজের অটোমেশন — এক জায়গায়",
+                    SaathiIcons.Bolt, onOpenControl
+                )
                 HubTile("ফাইল", "খোঁজা, খোলা, শেয়ার, মুছে ফেলা — নিজের ম্যানেজারে", SaathiIcons.Folder, onOpenFiles)
                 HubTile("গেম", "ফোনের আসল লুডু/দাবা/ক্যারম অ্যাপে খেলে", SaathiIcons.Games, onOpenGames)
                 HubTile("মেমরি ও রিমাইন্ডার", "কী মনে আছে, কী করতে হবে", SaathiIcons.Brain, onOpenMemory)
