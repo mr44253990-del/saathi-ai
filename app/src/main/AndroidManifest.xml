@@ -44,6 +44,23 @@
     <!-- Floating bubble -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- v3: generated audio (speech / ambient) keeps playing with the screen off. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <!-- v3: scheduled automation, medication reminders and timer tasks. Exact
+         alarms are requested but every schedule also has an inexact fallback, so
+         a device that denies this still works. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- v3: unfinished tasks resume after a reboot instead of silently dying. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- v3: Shizuku. Without the Shizuku app installed nothing happens: the
+         provider simply never receives a binder and PermissionCenter reports
+         "not installed" with a Play Store link. -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
     <!-- Terminal work. RUN_COMMAND is Termux's own plugin permission: it lets Jimi
          execute a command inside Termux (where a real shell, python, ffmpeg, git live)
          and get stdout/stderr back through a PendingIntent. The user still has to set
@@ -223,6 +240,17 @@
         <receiver
             android:name=".access.TermuxResultReceiver"
             android:exported="false" />
+
+        <!-- Shizuku handshake: hands the privileged binder to this process as soon
+             as Shizuku is running. exported + INTERACT_ACROSS_USERS_FULL is what the
+             Shizuku library documents; the provider itself only talks to Shizuku. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

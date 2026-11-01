@@ -93,5 +93,22 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.4.0")
     implementation("androidx.camera:camera-view:1.4.0")
 
+    // ---- v3: privileged device control -------------------------------------
+    // Shizuku lets Jimi use system APIs with ADB (uid 2000) or root (uid 0)
+    // privileges *without* the device being rooted. `provider` supplies the
+    // ContentProvider handshake that delivers the binder to this process.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+    // Android 9+ blocks non-SDK interfaces; Shizuku's binder wrappers need this.
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:4.3")
+
+    // ---- v3: durable background work ---------------------------------------
+    // WorkManager survives process death and reboots, so scheduled/periodic
+    // automation templates and task recovery keep working.
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // ---- v3: biometric lock (Jarvis parity) --------------------------------
+    implementation("androidx.biometric:biometric:1.1.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

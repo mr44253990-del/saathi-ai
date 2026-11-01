@@ -30,6 +30,7 @@ class BubbleService : Service() {
         createChannel()
         startForegroundSafely()
         bubble = JimiBubble(this).also { it.show() }
+        publishShowing()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -61,7 +62,13 @@ class BubbleService : Service() {
             }
         }
         if (!autoHidden) ensureBubble()
+        publishShowing()
         return START_STICKY
+    }
+
+    /** Mirrors the view state into the companion flag. */
+    private fun publishShowing() {
+        showing = !autoHidden && bubble?.isShowing == true
     }
 
     /** Shows the bubble unless the user (or the open app) has asked it to stay away. */
@@ -74,6 +81,7 @@ class BubbleService : Service() {
     override fun onDestroy() {
         bubble?.hide()
         bubble = null
+        showing = false
         super.onDestroy()
     }
 
@@ -137,6 +145,14 @@ class BubbleService : Service() {
          */
         @Volatile
         var autoHidden = false
+            private set
+
+        /**
+         * Real visibility of the bubble view (not just the service being alive),
+         * published so the dashboard, KillSwitch and the model never guess.
+         */
+        @Volatile
+        var showing = false
             private set
 
         fun show(context: Context) {
