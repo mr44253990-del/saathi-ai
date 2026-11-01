@@ -82,7 +82,7 @@ object ToolRegistryGuide {
         ব্রাউজার চালানো (আগে যেটা ঠিকমতো হতো না):
         1. open_url(url) — সরাসরি ঠিকানায় যাও, গুগল সার্চ ঘুরে নয়।
         2. screen_look → পেজের আসল চেহারা দেখো (বিজ্ঞাপন/কুকি পপআপ প্রথমে বন্ধ করো:
-           screen_locate("Close"/"Accept"/"✕" না মিললে screen_clickables দেখে ট্যাপ)।
+           screen_locate("Close"/"Accept"/"X" না মিললে screen_clickables দেখে ট্যাপ)।
         3. টেক্সট বক্সে fill_field(label,text), লিংকে screen_tap বা gesture_tap(x,y),
            স্ক্রলে human_scroll(down)। নতুন ট্যাব খুললে read_screen দিয়ে নিশ্চিত হও।
         4. কোনো সাইট লগইন/পেমেন্ট চাইলে থেমে গিয়ে ব্যবহারকারীকে বলবে — নিজে পাসওয়ার্ড ভরবে না।
