@@ -206,7 +206,7 @@ class DailyAssistant(private val context: Context) {
         val rem = todayReminders().size
         return buildString {
             append("আজ: ${if (issues.isEmpty()) "ফোন ঠিক আছে" else "${issues.size}টি সমস্যা"}")
-            if (rem > 0) append(" · $remটি রিমাইন্ডার")
+            if (rem > 0) append(" · ${rem}টি রিমাইন্ডার")
             val t = TaskHistory(context).recent(1).firstOrNull()
             if (t != null) append(" · শেষ টাস্ক: ${t.goal.take(30)}")
         }

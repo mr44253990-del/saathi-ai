@@ -104,7 +104,7 @@ class MemorySearch(private val context: Context) {
         return buildString {
             appendLine("মেমোরি ড্যাশবোর্ড")
             appendLine("• মনে রাখা তথ্য: ${mem.all().size}টি · রিমাইন্ডার: ${mem.reminders().size}টি")
-            appendLine("• কথা (চ্যাট): $chatsটি সেশন")
+            appendLine("• কথা (চ্যাট): ${chats}টি সেশন")
             appendLine("• টাস্ক ইতিহাস: ${hist.count()}টি")
             appendLine("• প্রজেক্ট ওয়ার্কস্পেস: ${proj.count()}টি")
             append(hist.stats())

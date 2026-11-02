@@ -28,7 +28,8 @@ class ContextSummarizer(private val context: Context) {
         if (kept.isEmpty()) kept = lines.indices.toMutableList()
 
         // Always keep the head (what was asked) and the tail (what happened last).
-        val mustKeep = (lines.indices.take(2) + lines.indices.takeLast(3)).distinct()
+        val every = lines.indices.toList()
+        val mustKeep = (every.take(2) + every.takeLast(3)).distinct()
         val selected = (mustKeep + kept).distinct().sorted()
 
         val sb = StringBuilder()

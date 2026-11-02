@@ -4,6 +4,7 @@ import android.content.Context
 import com.saathi.ai.agent.AgentStatus
 import com.saathi.ai.agent.Orchestrator
 import com.saathi.ai.agent.ResourceLocks
+import com.saathi.ai.agent.token
 import com.saathi.ai.bubble.BubbleService
 import com.saathi.ai.core.ErrorCenter
 import com.saathi.ai.data.SecurePrefs
@@ -137,7 +138,7 @@ object TaskEngine {
         schedule()
         return "কাজ লাইনে যোগ হয়েছে: ${run.goal.take(80)}\n" +
             "আইডি: $id · এজেন্ট: ${agent?.nameBangla ?: "অটো"} · অগ্রাধিকার: ${run.priority} · " +
-            "একসাথে চলতে পারে: $MAX_CONCURRENTটি\n" +
+            "একসাথে চলতে পারে: ${MAX_CONCURRENT}টি\n" +
             "বলো «থামাও $id» / «পজ করো» / «অগ্রগতি দেখাও» যখন খুশি।"
     }
 

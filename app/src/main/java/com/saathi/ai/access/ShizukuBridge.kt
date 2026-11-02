@@ -274,8 +274,19 @@ object ShizukuBridge {
      */
     fun exec(cmd: String, timeoutMs: Long = 25_000): Result {
         if (cmd.isBlank()) return Result(false, -1, "", "খালি কমান্ড")
-        val proc = try {
-            Shizuku.newProcess(arrayOf("sh", "-c", cmd), null, null)
+        val proc: java.lang.Process = try {
+            // Shizuku 13.1.5 marks newProcess as private API, but it is a library
+            // class inside this APK (not a platform class), so reflection is both
+            // allowed and stable here. Anything else would need a bound AIDL shell
+            // service, which Shizuku's starter does not expose.
+            val m = Shizuku::class.java.getDeclaredMethod(
+                "newProcess",
+                Array<String>::class.java,
+                Array<String>::class.java,
+                String::class.java
+            )
+            m.isAccessible = true
+            m.invoke(null, arrayOf("sh", "-c", cmd), null, null) as java.lang.Process
         } catch (t: Throwable) {
             ErrorCenter.log(TAG, "newProcess ব্যর্থ: $cmd", t.message ?: "unknown")
             return Result(false, -1, "", "Shizuku প্রসেস চালু করা যায়নি: ${t.message}")

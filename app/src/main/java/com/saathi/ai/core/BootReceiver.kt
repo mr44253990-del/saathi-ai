@@ -35,7 +35,6 @@ class BootReceiver : BroadcastReceiver() {
             runCatching { report.add(TaskEngine.recover(app)) }
                 .onFailure { report.add("টাস্ক রিকভারি ব্যর্থ: ${it.message}") }
             runCatching { com.saathi.ai.web.WebBrowser.registerKillSwitch() }
-            runCatching { com.saathi.ai.bubble.BubbleService.publishShowing() }
             ErrorCenter.info(
                 "task",
                 "রিস্টার্টের পরে টাস্ক ফেরানো হয়েছে",

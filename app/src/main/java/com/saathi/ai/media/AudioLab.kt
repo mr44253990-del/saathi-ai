@@ -177,9 +177,9 @@ class AudioLab(private val context: Context) {
             val out = pcm.copyOf()
             var smoothed = 0
             for (i in 0 until pcm.size / 2) {
-                val v = sample(pcm, i * 2)
+                val v = sample(pcm, i * 2).toInt()
                 val a = abs(v)
-                val nv = if (a < gate) (v * 0.25).toInt() else v
+                val nv: Int = if (a < gate) (v * 0.25).toInt() else v
                 smoothed = (smoothed * 0.35 + nv * 0.65).toInt()
                 writeSample(out, i * 2, smoothed.toShort())
             }

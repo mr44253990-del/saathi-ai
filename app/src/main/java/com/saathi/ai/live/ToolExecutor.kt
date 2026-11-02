@@ -944,8 +944,11 @@ class ToolExecutor(private val context: Context) {
             "permission_fix" -> perms.autoFix(context)
             "permission_guide" -> perms.guide(context, a.str("id"))
             "kill_stop" -> kill.stopAll(context)
-            "error_report" -> if (a.str("module").isNotBlank()) errs.forModule(a.str("module"))
-                else errs.report(a.int("limit", 18))
+            "error_report" -> if (a.str("module").isNotBlank()) {
+                val rows = errs.forModule(a.str("module"), a.int("limit", 20))
+                if (rows.isEmpty()) "«${a.str("module")}» মডিউলে কোনো এরর লগ নেই"
+                else rows.joinToString("\n") { "• ${it.time()} [${it.severity}] ${it.message}${if (it.detail.isBlank()) "" else " — ${it.detail.take(90)}"}" }
+            } else errs.report(a.int("limit", 18))
             "error_clear" -> { errs.clear(); "সফল: এরর লগ মুছে ফেলা হয়েছে" }
             "approval_status" -> gate.status() + "\n" + gate.historyText(8)
             "approval_decide" -> {

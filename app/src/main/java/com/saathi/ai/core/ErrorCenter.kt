@@ -91,7 +91,8 @@ object ErrorCenter {
         }
     }
 
-    fun info(module: String, message: String) = log(module, message, null, Severity.INFO)
+    fun info(module: String, message: String, detail: String? = null) =
+        log(module, message, detail, Severity.INFO)
     fun warn(module: String, message: String, detail: String? = null) =
         log(module, message, detail, Severity.WARNING)
     fun fatal(module: String, message: String, detail: String? = null) =

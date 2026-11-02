@@ -15,6 +15,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
 /**
@@ -102,12 +103,11 @@ class VideoLab(private val context: Context) {
         }
         val body = JSONObject().apply {
             val parts = JSONArray().put(JSONObject().put("text", prompt))
-            frames.forEachIndexed { i, bmp ->
-                val jpeg = mu.toJpeg(bmp, 82)
+            // videoFrames hands back encoded JPEG bytes, not bitmaps
+            frames.forEachIndexed { i, jpeg ->
                 parts.put(JSONObject().put("text", "ফ্রেম ${i + 1} — ${stampMs(i, frames.size, path)}"))
                 parts.put(JSONObject().put("inlineData", JSONObject()
                     .put("mimeType", "image/jpeg").put("data", mu.toBase64(jpeg))))
-                bmp.recycle()
             }
             put("contents", JSONArray().put(JSONObject().put("parts", parts)))
         }

@@ -111,7 +111,7 @@ class DocumentStudio(private val context: Context) {
                     index++
                     drawn++
                 }
-                canvas.drawText("পৃষ্ঠা $pageNo", pageW - margin - 60, pageH - 26, metaPaint)
+                canvas.drawText("পৃষ্ঠা $pageNo", pageW - margin - 60f, pageH - 26f, metaPaint)
                 doc.finishPage(page)
                 pageNo++
                 if (index >= lines.size) break
