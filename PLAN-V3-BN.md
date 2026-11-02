@@ -179,3 +179,21 @@
 | Image / Video / Audio Processing | ব্যাচ E | ফোনে হাতে |
 | Release APK Generation | ব্যাচ H — CI রিলিজ | স্বয়ংক্রিয় (এখানেই যাচাই হয়) |
 | কোড-পর্যায় যাচাই | প্রতিটি ব্যাচে লোকাল kotlinc + dex স্ক্যান | এখানেই করা হবে |
+
+---
+
+## ৭. বাস্তব অবস্থা (বিল্ড ৩৪ · কমিট `aaec79d` · CI `41373588242` success)
+
+| ব্যাচ | অবস্থা | কী গেল |
+|---|---|---|
+| A — অ্যাক্সেস/নিরাপত্তা | সম্পন্ন | ShizukuBridge, PermissionCenter, ErrorCenter, KillSwitch, ApprovalGate, Gradle+Manifest |
+| B — এজেন্ট/টাস্ক ইঞ্জিন | সম্পন্ন | Agent চুক্তি, ১১ এজেন্ট, Orchestrator+ResourceLocks, TaskEngine (৫ concurrent, টাইমার, রিকভারি) |
+| C — ভিজ্যুয়াল কম্পিউটার | সম্পন্ন | ComputerUseClient, ActionMapper, VisualCore (verify লুপ + স্ক্রিনশট ক্লিনআপ) |
+| D — ব্রাউজার/রিসার্চ | সম্পন্ন | WebBrowser (ট্যাব, JS, ফর্ম, শট, ডাউনলোড), ResearchEngine (ক্রস-চেক + ক্যাশ) |
+| E — মাল্টিমোডাল/অডিও | সম্পন্ন | AudioGen, AudioPlaybackService (FGS), AudioLab, VideoLab, VisionLab, DocumentStudio |
+| F — মেমোরি/প্রজেক্ট/অটোমেশন/দৈনন্দিন | সম্পন্ন | TaskHistory, ContextSummarizer, MemorySearch, ProjectWorkspace, DailyAssistant, TemplateStore+MacroRecorder, ModelRouter, BootReceiver |
+| G — UI/UX | **আংশিক** | ControlCenterScreen (৬ ট্যাব + জরুরি স্টপ), Hub টাইল, MainActivity bring-up। বাকি: থিম/গ্লাস টোকেন, বাবল v2 রিডিজাইন, Hub পারফরম্যান্স, ফাইল প্রিভিউ আপগ্রেড, নতুন প্রেফের সেটিংস UI |
+| H — টুল ওয়ারিং/বিল্ড | সম্পন্ন | ১২৮ নতুন টুল (মোট ২৯১ = ২৯১ হ্যান্ডেল), গাইড টেক্সট, প্রেফ, Manifest, রিলিজ APK |
+
+**যাচাই:** CI কম্পাইল + রিলিজ, dex স্ক্রিন (নতুন ক্লাস ও টুলের নাম উপস্থিত), Manifest স্ক্রিন, উৎসে ইমোজি শূন্য।
+**সৎ সীমা:** এই স্যান্ডবক্সে অ্যান্ড্রয়েড ডিভাইস/এমুলেটর নেই — রানটাইম আচরণ (Shizuku হ্যান্ডশেক, অ্যাক্সেসিবিলিটি ক্লিক, WebView রেন্ডার, TTS প্লেব্যাক) পরীক্ষা করা হয়নি; সেগুলো ফোনে ইনস্টল করে হাতে যাচাই করতে হবে।
